@@ -31,7 +31,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
 ]
 
-ALL_SOURCES = ["sogou", "bilibili", "weibo"]
+ALL_SOURCES = ["sogou", "bilibili", "weibo", "juejin"]
 
 
 def rand_ua():
@@ -281,18 +281,83 @@ def search_weibo(query, _limit=20):
 
 
 # ============================================================
+# Juejin Search
+# ============================================================
+def search_juejin(query, limit=20):
+    """Search Juejin (掘金) articles via public API."""
+    try:
+        resp = requests.post(
+            "https://api.juejin.cn/search_api/v1/search",
+            headers={
+                "User-Agent": rand_ua(),
+                "Content-Type": "application/json"
+            },
+            json={
+                "key_word": query,
+                "id_type": 0,
+                "limit": limit,
+                "cursor": "0"
+            },
+            timeout=15
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("err_no") != 0 or not data.get("data"):
+            print("Juejin: no results", file=sys.stderr)
+            return []
+
+        results = []
+        for item in data["data"]:
+            if item.get("result_type") != 2:
+                continue
+            model = item.get("result_model", {})
+            info = model.get("article_info", {})
+            auth = model.get("author_user_info", {})
+            if not info or not info.get("article_id"):
+                continue
+
+            # Juejin wraps matched keywords in <em> tags
+            title = info.get("title", "").replace("<em>", "").replace("</em>", "")
+            content = info.get("brief_content", "").replace("<em>", "").replace("</em>", "")
+
+            results.append({
+                "title": title,
+                "content": content,
+                "url": f"https://juejin.cn/post/{info['article_id']}",
+                "source": "juejin",
+                "sourceId": info.get("article_id"),
+                "viewCount": info.get("view_count", 0),
+                "author": {
+                    "name": auth.get("user_name", ""),
+                    "username": str(info.get("user_id", "")),
+                },
+                "likeCount": info.get("digg_count", 0),
+            })
+            if len(results) >= limit:
+                break
+
+        print(f"Juejin: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"Juejin error: {e}", file=sys.stderr)
+        return []
+
+
+# ============================================================
 # Aggregation
 # ============================================================
 SEARCH_FNS = {
     "sogou": search_sogou,
     "bilibili": search_bilibili,
     "weibo": search_weibo,
+    "juejin": search_juejin,
 }
 
 RATE_LIMITS = {
     "sogou": 3,
     "bilibili": 2,
     "weibo": 3,
+    "juejin": 3,
 }
 
 

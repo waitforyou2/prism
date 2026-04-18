@@ -88,7 +88,10 @@ Present top results in structured format:
 
 ### Step 5: Full-text fetch + save to raw layer
 
-```bash
+> [!WARNING]
+> **Windows Users**: You MUST run these piping/redirection commands in **Command Prompt (`cmd.exe`)** (or Git Bash/WSL), NOT PowerShell. PowerShell native redirection `<` `>` modifies string encodings and will corrupt the JSON formatting!
+
+```cmd
 # Fetch full content via Defuddle (and follow redirects)
 node skills/harvest/scripts/fetch_content.js < annotated_results.json > enriched.json
 

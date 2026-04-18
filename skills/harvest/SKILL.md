@@ -33,7 +33,7 @@ Determine keyword(s) and scope:
 - **Specific tracking**: "帮我关注 Harness Engineering" → use `harness engineering` as keyword
 - **Multi-keyword**: support multiple keywords, run sequentially with 3s delay
 
-### Step 2: Search all sources
+### Step 2: Search all sources (Reference `references/search-sources.md`)
 
 Run in parallel (international + Chinese):
 
@@ -50,7 +50,7 @@ python skills/harvest/scripts/search_twitter.py "keyword" --limit 15
 
 Merge all JSON arrays into one combined result set.
 
-### Step 3: AI analysis (apply analysis-guide.md)
+### Step 3: AI analysis (Reference `references/analysis-guide.md`)
 
 For each result, evaluate:
 1. **isReal** — genuine news or clickbait/spam?

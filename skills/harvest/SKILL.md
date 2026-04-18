@@ -88,14 +88,12 @@ Present top results in structured format:
 
 ### Step 5: Full-text fetch + save to raw layer
 
-After presenting the report, fetch full content for the retained items:
-
 ```bash
 # Fetch full content via Defuddle (and follow redirects)
-cat annotated_results.json | node skills/harvest/scripts/fetch_content.js > enriched.json
+node skills/harvest/scripts/fetch_content.js < annotated_results.json > enriched.json
 
 # Save to wiki/raw/ (full-text) or wiki/signals/ (snippets)
-cat enriched.json | python skills/harvest/scripts/save_to_raw.py --keyword "harness engineering"
+python skills/harvest/scripts/save_to_raw.py --keyword "harness engineering" < enriched.json
 ```
 
 Report to user:

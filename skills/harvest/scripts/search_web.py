@@ -15,6 +15,7 @@ import random
 import sys
 import time
 import math
+import re
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlencode, urlparse, parse_qs, unquote
 
@@ -32,7 +33,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
 ]
 
-ALL_SOURCES = ["bing", "google", "duckduckgo", "hackernews", "github"]
+ALL_SOURCES = ["bing", "google", "duckduckgo", "hackernews", "github", "youtube"]
 
 
 def get_headers(lang="en"):
@@ -263,6 +264,79 @@ def search_github(query, limit=20):
         return []
 
 
+# ============================================================
+# YouTube Search
+# ============================================================
+def search_youtube(query, limit=20):
+    """Search YouTube videos via HTML ytInitialData extraction."""
+    try:
+        resp = requests.get(
+            "https://www.youtube.com/results",
+            params={"search_query": query},
+            headers={"User-Agent": rand_ua() if "rand_ua" in globals() else "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        
+        match = re.search(r'ytInitialData = ({.*?});</script>', resp.text)
+        if not match:
+            print("YouTube: no ytInitialData found", file=sys.stderr)
+            return []
+            
+        data = json.loads(match.group(1))
+        contents = data.get('contents', {}).get('twoColumnSearchResultsRenderer', {}).get('primaryContents', {}).get('sectionListRenderer', {}).get('contents', [])
+        
+        results = []
+        for c in contents:
+            items = c.get('itemSectionRenderer', {}).get('contents', [])
+            for item in items:
+                video = item.get('videoRenderer')
+                if not video:
+                    continue
+                    
+                title = video.get('title', {}).get('runs', [{}])[0].get('text', '')
+                video_id = video.get('videoId')
+                views_str = video.get('viewCountText', {}).get('simpleText', '')
+                
+                # Parse views
+                view_count = 0
+                if views_str:
+                    num_match = re.search(r'([\d,]+)', views_str)
+                    if num_match:
+                        view_count = int(num_match.group(1).replace(',', ''))
+                        
+                channel = video.get('ownerText', {}).get('runs', [{}])[0].get('text', '')
+                desc_snippets = video.get('detailedMetadataSnippets', [{}])
+                desc = ""
+                if desc_snippets:
+                    runs = desc_snippets[0].get('snippetText', {}).get('runs', [])
+                    desc = "".join([r.get('text', '') for r in runs])
+
+                if title and video_id:
+                    results.append({
+                        "title": title,
+                        "content": desc or title,
+                        "url": f"https://www.youtube.com/watch?v={video_id}",
+                        "source": "youtube",
+                        "sourceId": video_id,
+                        "viewCount": view_count,
+                        "author": {
+                            "name": channel,
+                            "username": channel
+                        }
+                    })
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+                
+        print(f"YouTube: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"YouTube error: {e}", file=sys.stderr)
+        return []
+
+
 def deduplicate(results):
     """Remove duplicate URLs after normalization."""
     seen = set()
@@ -281,6 +355,7 @@ SEARCH_FNS = {
     "duckduckgo": search_duckduckgo,
     "hackernews": search_hackernews,
     "github": search_github,
+    "youtube": search_youtube,
 }
 
 RATE_LIMITS = {
@@ -289,6 +364,7 @@ RATE_LIMITS = {
     "duckduckgo": 3,
     "hackernews": 1,
     "github": 2,
+    "youtube": 3,
 }
 
 

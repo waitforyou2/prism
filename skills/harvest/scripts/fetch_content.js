@@ -99,6 +99,10 @@ function getArg(args, flag) {
   return idx !== -1 ? args[idx + 1] : null;
 }
 
+function isSogouLink(item) {
+  return item.source === 'sogou' && item.url.includes('sogou.com/link');
+}
+
 function log(...msg) {
   process.stderr.write(msg.join(' ') + '\n');
 }
@@ -176,8 +180,8 @@ async function processItem(item, index, total) {
   }
 
   // Skip sources without meaningful extractors
-  if (SKIP_SOURCES.has(item.source)) {
-    log(`${prefix} ⏭  Skipped (no extractor for ${item.source}): ${item.title?.slice(0, 60)}`);
+  if (SKIP_SOURCES.has(item.source) || isSogouLink(item)) {
+    log(`${prefix} ⏭  Skipped (no extractor for ${item.source} or sogou redirect): ${item.title?.slice(0, 60)}`);
     return { ...item, fetchStatus: 'skipped_no_extractor', fullContent: item.content ?? '', wordCount: 0 };
   }
 
@@ -237,11 +241,11 @@ async function main() {
     process.exit(1);
   }
 
-  const eligible = items.filter(i => (i.relevance ?? 0) >= MIN_RELEVANCE && !SKIP_SOURCES.has(i.source));
-  const skipped  = items.filter(i => (i.relevance ?? 0) < MIN_RELEVANCE || SKIP_SOURCES.has(i.source));
+  const eligible = items.filter(i => (i.relevance ?? 0) >= MIN_RELEVANCE && !SKIP_SOURCES.has(i.source) && !isSogouLink(i));
+  const skipped  = items.filter(i => (i.relevance ?? 0) < MIN_RELEVANCE || SKIP_SOURCES.has(i.source) || isSogouLink(i));
 
   log(`\n📥 ${items.length} items received`);
-  log(`🎯 ${eligible.length} eligible for full fetch (relevance ≥ ${MIN_RELEVANCE}, source not in skip list)`);
+  log(`🎯 ${eligible.length} eligible for full fetch (relevance ≥ ${MIN_RELEVANCE}, not skipped source)`);
   log(`⏭  ${skipped.length} will be passed through without fetching\n`);
 
   const enrichedEligible = await processBatch(eligible);

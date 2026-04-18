@@ -58,14 +58,19 @@ For each result, evaluate:
 3. **importance** — `low` / `medium` / `high` / `urgent`
 4. **summary** — one-sentence Chinese summary of the relationship to keyword
 
-Filter out:
-- `isReal = false` → discard
-- `relevance < 50` → discard
-- `relevance < 70 AND keywordMentioned = false` → discard
+**AI Action**: Create a minimal JSON file (`annotations.json`) mapping the array indices (or URLs) to your decisions. For example:
+```json
+{
+  "0": { "isReal": true, "relevance": 90, "importance": "high", "summary": "..." },
+  "4": { "isReal": false }
+}
+```
+*Note: Any item omitted or with relevance < 70 (or isReal = false) will be automatically discarded.*
 
-Annotate each surviving item with these fields before passing to fetch step.
-
-### Step 4: Report to user
+Apply the filter:
+```bash
+python skills/harvest/scripts/apply_filter.py --raw search_results_raw.json --ann annotations.json --out annotated_results.json --keyword "harness engineering"
+```
 
 Present top results in structured format:
 
@@ -83,15 +88,13 @@ Present top results in structured format:
 
 ### Step 5: Full-text fetch + save to raw layer
 
-After presenting the report, fetch full content for high-relevance items.
-
-First, write the AI-annotated results (with `relevance`, `importance`, `isReal`, `summary`, `keyword` fields) to a temp JSON file, then:
+After presenting the report, fetch full content for the retained items:
 
 ```bash
-# Fetch full content via Defuddle (filters relevance >= 70 internally)
+# Fetch full content via Defuddle (and follow redirects)
 cat annotated_results.json | node skills/harvest/scripts/fetch_content.js > enriched.json
 
-# Save to wiki/raw/
+# Save to wiki/raw/ (full-text) or wiki/signals/ (snippets)
 cat enriched.json | python skills/harvest/scripts/save_to_raw.py --keyword "harness engineering"
 ```
 
@@ -106,6 +109,7 @@ Report to user:
 | `search_web.py` | Bing, Google, DuckDuckGo, HackerNews | `--sources`, `--limit` |
 | `search_china.py` | Sogou, Bilibili, Weibo | `--sources`, `--limit`, `--detect-account` |
 | `search_twitter.py` | Twitter/X | `--limit`, `--trends`, `--user` |
+| `apply_filter.py` | — | `--raw`, `--ann`, `--out`, `--keyword` |
 | `fetch_content.js` | Web (via Defuddle) | `--min-relevance`, `--concurrency`, `--timeout` |
 | `save_to_raw.py` | — | `--wiki-dir`, `--keyword`, `--dry-run` |
 

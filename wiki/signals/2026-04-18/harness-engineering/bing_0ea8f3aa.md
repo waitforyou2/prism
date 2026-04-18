@@ -1,0 +1,18 @@
+---
+title: "Harness engineering: leveraging Codex in an agent-first world"
+url: "https://www.bing.com/ck/a?!&&p=57e3a8cb34064dff07353079c6fe27c12cb322d76a64a717a7c6609b796b8398JmltdHM9MTc3NjQ3MDQwMA&ptn=3&ver=2&hsh=4&fclid=23d4a11f-9f20-6695-065f-b6209efe67c2&u=a1aHR0cHM6Ly9vcGVuYWkuY29tL2luZGV4L2hhcm5lc3MtZW5naW5lZXJpbmcv&ntb=1"
+source: bing
+keyword: "harness engineering"
+relevance: 92
+importance: urgent
+isReal: true
+summary: "基于 OpenAI Codex 的 Harness Engineering 实践，agent-first 世界的工程范式"
+fetchedAt: 2026-04-18T16:36:20Z
+fetchStatus: failed
+wordCount: 0
+processed: false
+---
+
+# Harness engineering: leveraging Codex in an agent-first world
+
+Feb 11, 2026· To do that, we needed to understand what changes when a software engineering team’s primary job is no longer to write code, but to design environments, specify intent, and build feedback …

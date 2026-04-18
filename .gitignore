@@ -1,0 +1,25 @@
+# Node.js
+node_modules/
+package-lock.json
+
+# Python
+*.pyc
+__pycache__/
+*.py.bak
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Temp files from scripts (intermediate processing)
+search_results_raw.json
+annotated_results.json
+enriched.json
+run_fetch.js
+
+# OS
+.DS_Store
+Thumbs.db

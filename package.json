@@ -1,0 +1,13 @@
+{
+  "name": "prism",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI knowledge harvesting and wiki organization tool",
+  "scripts": {
+    "fetch": "node skills/harvest/scripts/fetch_content.js"
+  },
+  "dependencies": {
+    "defuddle": "latest",
+    "jsdom": "latest"
+  }
+}

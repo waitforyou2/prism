@@ -32,7 +32,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
 ]
 
-ALL_SOURCES = ["bing", "google", "duckduckgo", "hackernews"]
+ALL_SOURCES = ["bing", "google", "duckduckgo", "hackernews", "github"]
 
 
 def get_headers(lang="en"):
@@ -215,6 +215,54 @@ def search_hackernews(query, limit=20):
         return []
 
 
+# ============================================================
+# GitHub Search
+# ============================================================
+def search_github(query, limit=20):
+    """Search GitHub repositories via public API (sorted by stars)."""
+    try:
+        resp = requests.get(
+            "https://api.github.com/search/repositories",
+            params={
+                "q": query,
+                "sort": "stars",
+                "per_page": limit,
+            },
+            headers={"User-Agent": rand_ua() if "rand_ua" in globals() else "Mozilla/5.0"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("items"):
+            print("GitHub: no results", file=sys.stderr)
+            return []
+
+        results = []
+        for item in data["items"]:
+            results.append({
+                "title": item.get("full_name", ""),
+                "content": item.get("description") or "",
+                "url": item.get("html_url", ""),
+                "source": "github",
+                "sourceId": str(item.get("id", "")),
+                "viewCount": item.get("stargazers_count", 0),
+                "likeCount": item.get("stargazers_count", 0),
+                "author": {
+                    "name": item.get("owner", {}).get("login", ""),
+                    "username": item.get("owner", {}).get("login", ""),
+                },
+                "publishedAt": item.get("updated_at"),
+            })
+            if len(results) >= limit:
+                break
+
+        print(f"GitHub: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"GitHub error: {e}", file=sys.stderr)
+        return []
+
+
 def deduplicate(results):
     """Remove duplicate URLs after normalization."""
     seen = set()
@@ -232,6 +280,7 @@ SEARCH_FNS = {
     "google": search_google,
     "duckduckgo": search_duckduckgo,
     "hackernews": search_hackernews,
+    "github": search_github,
 }
 
 RATE_LIMITS = {
@@ -239,6 +288,7 @@ RATE_LIMITS = {
     "google": 10,
     "duckduckgo": 3,
     "hackernews": 1,
+    "github": 2,
 }
 
 

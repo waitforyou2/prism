@@ -37,6 +37,22 @@ Detailed information about each data source, including endpoints, rate limits, p
 - **Response fields**: `title`, `url`, `story_text`, `author`, `points`, `num_comments`, `created_at`
 - **Quirks**: Best source for tech/programming news. `url` may be null for "Ask HN" or "Show HN" posts — use `https://news.ycombinator.com/item?id={objectID}` as fallback.
 
+### GitHub
+
+- **Method**: Official REST API (no API key)
+- **URL**: `https://api.github.com/search/repositories?q={query}&sort=stars&per_page=20`
+- **Rate limit**: 2 seconds between requests
+- **Response fields**: `full_name` (title), `description` (content), `html_url` (url), `stargazers_count` (views/likes)
+- **Quirks**: The best source for trending code repositories. Defuddle extractor supports fetching the raw `README.md` from GitHub repository URLs natively.
+
+### YouTube
+
+- **Method**: HTML `ytInitialData` extraction (no API key)
+- **URL**: `https://www.youtube.com/results?search_query={query}`
+- **Rate limit**: 3 seconds between requests
+- **Response extraction**: RegEx match `ytInitialData = ({.*?});</script>` to parse JSON payload bypassing anti-bot blocks.
+- **Quirks**: Replaces API keys by scraping the frontend. High value for tutorials and tech events. Defuddle handles video transcript extraction natively.
+
 ## Chinese Sources
 
 ### Sogou (搜狗搜索)
@@ -71,6 +87,14 @@ Detailed information about each data source, including endpoints, rate limits, p
 - **Link format**: `https://s.weibo.com/weibo?q={encoded_hashtag_topic}`
 - **Quirks**: Returns current trending topics only — not a general search. Best for detecting if a topic is actively trending in China.
 
+### Juejin (掘金)
+
+- **Method**: Public JSON Search API (no API key)
+- **URL**: `https://api.juejin.cn/search_api/v1/search` (POST request)
+- **Rate limit**: 3 seconds between requests
+- **Payload**: `{"key_word": query, "id_type": 0, "limit": 20, "cursor": "0"}`
+- **Quirks**: Responses wrap matched keywords in `<em>` tags, which must be stripped before saving. Excellent quality for Chinese developer articles.
+
 ## Twitter/X
 
 - **Method**: REST API via `twitterapi.io` (requires API key)
@@ -97,9 +121,12 @@ All sources implement per-source rate limiting via minimum interval enforcement:
 | Google | 10s | High |
 | DuckDuckGo | 3s | Low |
 | HackerNews | 1s | None (official API) |
+| GitHub | 2s | None (REST API) |
+| YouTube | 3s | Medium |
 | Sogou | 3s | Low-Medium |
 | Bilibili | 2s | Low (official API) |
 | Weibo | 3s | Low (official API) |
+| Juejin | 3s | Low (Public API) |
 | Twitter | N/A | None (paid API) |
 
 ## User-Agent Rotation

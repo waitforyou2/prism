@@ -62,8 +62,8 @@ mkdir -p [keyword]/.cache
 Run search scripts using `$SKILL_DIR` for script paths, CWD-relative for output:
 
 ```bash
-# International (Bing, HackerNews, DuckDuckGo)
-python $SKILL_DIR/scripts/search_web.py "keyword" --sources bing,hackernews --limit 15 --out [keyword]/.cache/web.json
+# International (Bing, HackerNews, GitHub, YouTube)
+python $SKILL_DIR/scripts/search_web.py "keyword" --sources bing,hackernews,github,youtube --limit 15 --out [keyword]/.cache/web.json
 
 # Chinese (Bilibili, Weibo, Juejin)
 python $SKILL_DIR/scripts/search_china.py "keyword" --sources bilibili,weibo,juejin --limit 15 --out [keyword]/.cache/zh.json

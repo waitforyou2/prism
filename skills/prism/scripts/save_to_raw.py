@@ -81,7 +81,7 @@ def build_frontmatter(item: dict, fetched_at: str) -> str:
             lines.append(f'author: {yaml_escape(str(author))}')
     if item.get("publishedAt"):
         lines.append(f'publishedAt: {yaml_escape(item.get("publishedAt"))}')
-    lines.append(f'processed: false')
+    lines.append(f'compiled: false')
     lines.append('---')
     return '\n'.join(lines) + '\n'
 
@@ -120,7 +120,7 @@ def meta_record(item: dict, rel_path: str, fetched_at: str) -> dict:
         "wordCount": item.get("wordCount", 0),
         "author": author_name,
         "publishedAt": item.get("publishedAt"),
-        "processed": False,
+        "compiled": False,
     }
 
 

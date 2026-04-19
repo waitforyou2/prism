@@ -60,7 +60,7 @@ def main():
     files = load_index(wiki_dir)
 
     # Filter
-    unprocessed = [f for f in files if not f.get("processed", False)]
+    unprocessed = [f for f in files if not f.get("compiled", False)]
     if args.keyword:
         unprocessed = [f for f in unprocessed if args.keyword.lower() in f.get("keyword", "").lower()]
 
@@ -68,7 +68,7 @@ def main():
         if args.json:
             print("[]")
         else:
-            print("✅ No unprocessed files in wiki/raw/")
+            print("✅ No uncompiled files in wiki/raw/")
         return
 
     # Sort: importance asc (urgent first), then relevance desc

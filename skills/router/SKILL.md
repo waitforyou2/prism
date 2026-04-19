@@ -112,10 +112,10 @@ One knowledge base matched. Construct a SubAgent prompt using the template at
 - `{question}` — the user's **original** question (NOT the expanded query)
 
 Dispatch the SubAgent. The SubAgent will:
-1. Read WIKI.md (its constitution — Query mode is fully defined there)
-2. Read index.md to locate relevant pages
-3. Read relevant page files
-4. Return a structured answer
+1. Read WIKI.md (its constitution — Query mode is fully defined there).
+2. Read index.md to locate initial candidate pages (Overviews, Entities, Concepts).
+3. **Recursive Exploration**: Read candidate files and proactively follow internal `[[Wiki Links]]` to pivot or drill down into related details.
+4. Return a structured answer with high source density.
 
 **After receiving the SubAgent result:**
 - Present the answer to the user

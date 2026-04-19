@@ -8,13 +8,15 @@ description: >
   or any question that could be answered from existing knowledge bases.
 ---
 
-# router — 智能知识库路由技能
+# router — 智能知识库路由技能 v2.1
 
 This skill operates at the **workspace level** (a directory containing multiple knowledge bases).
 It discovers available KBs, routes the question, and dispatches SubAgents into each matching KB.
 
 > **核心原则**：Router 只负责"找到对的书架"。读书和回答由每个 KB 自己的 WIKI.md 宪法完成。
 > SubAgent 进入 KB 目录后，直接读取 WIKI.md 宪法并按其 Query 操作模式执行——无需调用任何 skill。
+
+> **v2.1 架构**：Agent 前置语义扩充 + 纯本地 BM25 打分。零 API 网络开销。
 
 ---
 
@@ -32,7 +34,7 @@ Confirm the user's CWD — this is the **workspace root** (the directory contain
 
 ## Phase 1: Discover Knowledge Bases
 
-Run the discovery script to find all knowledge bases in the workspace and (re)build the registry:
+Run the discovery script to build/refresh the registry (includes BM25 corpus for each KB):
 
 ```bash
 python $SKILL_DIR/scripts/discover.py \
@@ -49,28 +51,56 @@ Read the output registry at `.prism/registry.json`.
 
 ---
 
-## Phase 2: Routing Decision
+## Phase 2: Agent Query Expansion (YOU, the Agent, must do this)
 
-Run the routing script to match the user's question against the registry:
+**Before calling route.py, you MUST expand the user's raw question.**
+
+This is the most critical step. The BM25 engine is a pure text matcher — it cannot understand semantics. YOU are the semantic layer.
+
+**Expansion rules:**
+
+1. **Extract core intent**: What is the user really asking about?
+2. **Add synonyms**: Both Chinese and English
+3. **Add domain terms**: Technical terminology related to the question
+4. **Add proper nouns**: Product names, company names, person names
+5. **Flatten to a space-separated string**
+
+**Examples:**
+
+| User's raw question | Your expanded query |
+|---------------------|-------------------|
+| "AI编程工具的最新趋势？" | `AI编程 编程工具 coding tools agentic programming claude codex cursor agent 自动化 代码` |
+| "Claude Code 怎么用？" | `claude claude-code anthropic AI编程 agentic coding CLI terminal 命令行` |
+| "Codex 和 Claude 哪个好？" | `codex claude comparison 对比 openai anthropic code generation 代码生成 AI编程` |
+| "最近有什么新产品发布？" | `新产品 product release launch 发布 更新 update 工具 tool announcement` |
+
+**The richer and more precise your expansion, the better the routing accuracy.**
+
+---
+
+## Phase 3: Route
+
+Call the routing script with your expanded query:
 
 ```bash
 python $SKILL_DIR/scripts/route.py \
-  --question "[用户问题]" \
+  --query "<your expanded query string>" \
   --registry .prism/registry.json \
+  --out .prism/route_result.json \
   --verbose
 ```
 
-Read the JSON output. The `strategy` field determines next steps:
+Read `.prism/route_result.json`. The `strategy` field determines next steps:
 
 ```
-strategy = "single_kb"  → one KB matched      → Phase 3A
-strategy = "multi_kb"   → multiple KBs matched → Phase 3B
-strategy = "no_match"   → no KB matched        → Phase 3C
+strategy = "single_kb"  → one KB matched      → Phase 4A
+strategy = "multi_kb"   → multiple KBs matched → Phase 4B
+strategy = "no_match"   → no KB matched        → Phase 4C
 ```
 
 ---
 
-## Phase 3A: Single KB — SubAgent Dispatch
+## Phase 4A: Single KB — SubAgent Dispatch
 
 One knowledge base matched. Construct a SubAgent prompt using the template at
 `$SKILL_DIR/references/subagent_prompt.md`, filling in:
@@ -79,7 +109,7 @@ One knowledge base matched. Construct a SubAgent prompt using the template at
 - `{wiki_abs_path}` — absolute path to the KB's wiki directory
 - `{wiki_md_content}` — full text of `[wiki_abs_path]/WIKI.md`
 - `{index_md_content}` — full text of `[wiki_abs_path]/index.md`
-- `{question}` — the user's original question
+- `{question}` — the user's **original** question (NOT the expanded query)
 
 Dispatch the SubAgent. The SubAgent will:
 1. Read WIKI.md (its constitution — Query mode is fully defined there)
@@ -91,18 +121,18 @@ Dispatch the SubAgent. The SubAgent will:
 - Present the answer to the user
 - Append a log entry to `[wiki_abs_path]/log.md`:
   ```markdown
-  ## [YYYY-MM-DD] route_query | "[用户问题]"
-  路由策略: single_kb | 匹配: {kb_id} ({confidence})
+  ## [YYYY-MM-DD] route_query | "[用户原始问题]"
+  路由策略: single_kb | 匹配: {kb_id} (score={score})
   回答引用: {sources list}
   ```
 
 ---
 
-## Phase 3B: Multi-KB — Parallel SubAgent Dispatch
+## Phase 4B: Multi-KB — Parallel SubAgent Dispatch
 
 Multiple knowledge bases matched. For each matched KB:
 
-1. Construct a SubAgent prompt (same as Phase 3A)
+1. Construct a SubAgent prompt (same as Phase 4A)
 2. Dispatch SubAgents (in parallel if the platform supports it; otherwise serially)
 3. Collect all structured results
 
@@ -117,18 +147,18 @@ Synthesize a unified answer:
 
 Append log entries to each involved KB's `log.md`:
 ```markdown
-## [YYYY-MM-DD] route_query | "[用户问题]"
-路由策略: multi_kb | 匹配: {kb_id_1} ({conf_1}), {kb_id_2} ({conf_2})
+## [YYYY-MM-DD] route_query | "[用户原始问题]"
+路由策略: multi_kb | 匹配: {kb_id_1} (score={s1}), {kb_id_2} (score={s2})
 回答引用: [[Page A@kb_1]], [[Page B@kb_2]]
 ```
 
 ---
 
-## Phase 3C: No Match
+## Phase 4C: No Match
 
 No knowledge base covers this topic. Respond to the user:
 
-> 🔍 当前知识库中没有找到与 **"[用户问题]"** 相关的内容。
+> 🔍 当前知识库中没有找到与 **"[用户原始问题]"** 相关的内容。
 >
 > 建议运行 `harvest` 技能搜索相关内容，例如：
 > "帮我搜索 [主题关键词] 相关热点"
@@ -151,11 +181,14 @@ Do not inject additional instructions that override the constitution.
 
 | Script | Purpose | Key Options |
 |--------|---------|-------------|
-| `discover.py` | Scan workspace, build registry.json | `--workspace`, `--out`, `--verbose` |
-| `route.py` | Match question to KB(s) | `--question`, `--registry`, `--verbose` |
+| `discover.py` | Scan workspace, build registry.json (with BM25 corpus) | `--workspace`, `--out`, `--verbose` |
+| `route.py` | BM25 scoring against Agent-expanded query | `--query`, `--registry`, `--out`, `--verbose` |
 
-## Notes
+## Architecture Notes
 
-- **Platform adaptation**: If the AI platform supports parallel SubAgent dispatch (e.g., Claude Code `Task` tool), use it for `multi_kb`. Otherwise, dispatch serially — the end result is the same, only speed differs.
-- **Registry freshness**: The registry is rebuilt on every router invocation (Phase 1), so it always reflects the current state of the workspace. No stale cache issues.
-- **Single-KB shortcut**: If the user is already inside a KB directory (`claude/`) and asks a question, they don't need the router — the WIKI.md constitution handles it directly. Router is only needed at the **workspace root level**.
+- **Agent = Semantic Layer**: The Agent running this skill IS the language understanding component. It expands the query for free (no extra API call — it's already thinking).
+- **route.py = Scoring Layer**: Pure math. BM25Okapi with character bigrams for Chinese, word tokens for English. Inlined implementation, zero pip dependency.
+- **Fast-path**: If a KB id appears as a substring in the expanded query, route.py short-circuits BM25 and returns immediately (single-KB case).
+- **Platform adaptation**: If the AI platform supports parallel SubAgent dispatch, use it for `multi_kb`. Otherwise, dispatch serially.
+- **Registry freshness**: The registry is rebuilt on every router invocation (Phase 1), so it always reflects the current state of the workspace.
+- **Single-KB shortcut**: If the user is already inside a KB directory, they don't need the router — the WIKI.md constitution handles it directly.

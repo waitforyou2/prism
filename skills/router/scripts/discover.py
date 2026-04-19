@@ -6,6 +6,8 @@ A knowledge base is any directory containing wiki/WIKI.md.
 Extracts metadata from WIKI.md frontmatter and wiki/index.md frontmatter,
 then writes a registry.json for use by the router skill.
 
+v2.1: Now includes `bm25_corpus` field — a pre-built text blob for BM25 scoring.
+
 Usage:
   python discover.py --workspace ~/knowledge
   python discover.py --workspace ~/knowledge --out .prism/registry.json
@@ -81,13 +83,72 @@ def extract_index_meta(index_path: Path) -> tuple[dict, list[str]]:
     return fm, topics
 
 
+def extract_page_titles(wiki_dir: Path) -> list[str]:
+    """Scan wiki/pages/ and extract all page titles from frontmatter."""
+    pages_dir = wiki_dir / "pages"
+    if not pages_dir.exists():
+        return []
+
+    titles: list[str] = []
+    for md_file in sorted(pages_dir.rglob("*.md")):
+        if md_file.name.startswith("_"):
+            continue
+        try:
+            text = md_file.read_text(encoding='utf-8')
+        except Exception:
+            continue
+        fm = parse_frontmatter(text)
+        title = fm.get("title") or md_file.stem
+        titles.append(title)
+        # Also grab aliases if present
+        aliases_raw = fm.get("aliases", "")
+        if aliases_raw:
+            for a in aliases_raw.strip("[]").split(","):
+                a = a.strip().strip("'\"")
+                if a:
+                    titles.append(a)
+    return titles
+
+
+def build_bm25_corpus(kb_id: str, description: str, tags: list[str],
+                       topics: list[str], page_titles: list[str]) -> str:
+    """
+    Build a flat text blob for BM25 indexing.
+
+    Combines all discoverable metadata into a single string.
+    Higher-value signals (kb_id, page titles) are repeated for weight boosting.
+    """
+    parts: list[str] = []
+
+    # kb_id repeated 3x for strong anchor signal
+    if kb_id:
+        parts.extend([kb_id] * 3)
+
+    # Description (as-is)
+    if description:
+        parts.append(description)
+
+    # Tags (each repeated 2x for moderate weight)
+    for tag in tags:
+        parts.extend([tag] * 2)
+
+    # Topics from index.md
+    parts.extend(topics)
+
+    # Page titles — the highest-quality knowledge indicators (repeated 2x)
+    for title in page_titles:
+        parts.extend([title] * 2)
+
+    return " ".join(parts)
+
+
 # ── Core ──────────────────────────────────────────────────────────────────────
 
 def discover(workspace: Path, verbose: bool = False) -> list[dict]:
     """
     Scan workspace for knowledge bases (directories containing wiki/WIKI.md).
 
-    Returns a list of KB metadata dicts.
+    Returns a list of KB metadata dicts, each including a bm25_corpus field.
     """
     kbs: list[dict] = []
 
@@ -111,13 +172,15 @@ def discover(workspace: Path, verbose: bool = False) -> list[dict]:
         index_path = wiki_md_path.parent / "index.md"
         index_fm, topics = extract_index_meta(index_path)
 
-        # 3. Merge metadata (wiki frontmatter takes precedence for identity fields)
+        # 3. Extract all page titles for BM25 corpus
+        page_titles = extract_page_titles(wiki_md_path.parent)
+
+        # 4. Merge metadata
         kb_id       = wiki_fm.get("kb_id") or index_fm.get("kb_id") or kb_id_fallback
         description = wiki_fm.get("description", "")
         tags_raw    = wiki_fm.get("tags") or index_fm.get("tags") or ""
         tags        = parse_tags(tags_raw)
 
-        # If tags are empty, try to infer from kb_id
         if not tags and kb_id:
             tags = [kb_id]
 
@@ -133,6 +196,9 @@ def discover(workspace: Path, verbose: bool = False) -> list[dict]:
         except ValueError:
             rel_path = str(wiki_md_path.parent).replace("\\", "/")
 
+        # 5. Build BM25 corpus
+        corpus = build_bm25_corpus(kb_id, description, tags, topics, page_titles)
+
         kbs.append({
             "id":           kb_id,
             "path":         rel_path,
@@ -142,7 +208,11 @@ def discover(workspace: Path, verbose: bool = False) -> list[dict]:
             "page_count":   page_count,
             "topics":       topics,
             "last_updated": last_updated,
+            "bm25_corpus":  corpus,
         })
+
+        if verbose:
+            print(f"    corpus: {corpus[:120]}...", file=sys.stderr)
 
     return kbs
 

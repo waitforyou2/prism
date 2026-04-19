@@ -1,63 +1,96 @@
-# Prism
+# Prism Knowledge System
 
-> Prism takes raw web signals and refracts them into structured, persistent knowledge.
+Prism 是一套基于 Agentic AI 的自动化知识管理与萃取系统。它通过一系列高度定制化的 Skill（技能），将互联网上的海量高价值信息，转化为结构化、可查询的本地知识体系。
 
-## What it does
+Prism 的核心设计理念是**"代码即知识，知识即宪法"**。所有的结构化知识以纯文本 Markdown 的形式在本地（就像代码仓库一样）累积，并通过各自独立的宪法文件（`WIKI.md`）来实现自我治理。
 
-**Two skills, one knowledge base:**
+---
 
-```
-harvest skill                    prism skill
-(Search + Full-text Fetch)       (AI Wiki Organization)
-         ↓                                ↑
-      wiki/raw/   ──────────────→  wiki/pages/
-   (Raw Articles)                (Structured Knowledge)
-```
+## 🏗️ 核心架构：The Three Skills
 
-## Quick Start
+Prism 系统由三个核心 Skill 构成，它们分工明确，通过标准化的数据结构（文件层次）进行衔接：
 
-### 1. Install dependencies
+### 1. 🔍 Harvest (数据猎手)
+**定位**：全网热点监听与信息抓取。
+- **职责**：作为流水线的第一步，响应用户的搜索需求（例如："帮我关注最新的 AI 编程工具动态"），自动调度搜索源获取信息。
+- **机制**：
+  - 支持多数据源整合（Bing, HackerNews, GitHub, YouTube, 支持 B站、微博、掘金等中文源）。
+  - 引入了 AI 加持的 **"价值过滤 (Value Filtering)"** 机制，智能剔除低质噪音。
+  - 自动通过本地或云端爬虫（Defuddle）抓取网页全文。
+- **输出**：将萃取得到的高价值内容生成统一的 `enriched.json`，暂存于对应知识库的 `.cache/` 目录下。
+
+### 2. 💎 Prism (知识管家)
+**定位**：AI 知识结晶化引擎。
+- **职责**：将 Harvest 获取的原始语料，"编译"为体系化的 Markdown Wiki 页面。
+- **机制**：
+  - **宪法驱动**：读取对应知识库下的 `WIKI.md`。这不仅是元数据，更是指导 Agent 工作法则的"宪法"（规定了如何整理概念、实体，以及如何记录日志）。
+  - **递进式编译**：系统将扫描所有还未 "compiled" 的增量文档，经过信息聚合与决策去重，更新 `wiki/pages/` 里的结构化知识卡片。
+  - **自动化索引**：编译完成后自动更新全库索引 `index.md`，以及为下一阶段准备 BM25 检索语料。
+- **输出**：一个结构化、持久化存放、人类可直接阅读且可被 Obsidian 直接索引的 Markdown 文件夹阵列。
+
+### 3. 🚦 Router (前台路由) - v2.1
+**定位**：多知识库环境下的智能问答中枢。
+- **职责**：在包含十几个甚至上百个独立主题知识库的"工作区 (Workspace)"内，精准理解用户的模糊宽泛提问，将其调度给最合适的知识基底来回答。
+- **机制 (v2.1 架构)**：
+  - **Agent 语义前置**：宿主 AI 负责理解用户的提问，并自主将其扩充为一个包含"核心意图 + 领域同义词 + 中英专业术语"的富语义字符串。
+  - **本地极速打分 (BM25Okapi)**：内置零外部依赖的纯本地检索引擎。结合 Character Bigram（中文字符二元组）和快速 ID 匹配通道，在毫秒级找出目标库并降序排列。
+  - **SubAgent 隔离**：找到目标知识库后，Router 派发出独立的子智能体（SubAgent）进入对应的文件夹。子智能体被对应环境中的 `WIKI.md` 宪法强制接管，直接按库内规则找资料并答复，避免语境污染。
+  - **自动合并分歧**：若击中多个知识库，则并行查询并最终将不同来源的观点做合并对比。
+
+---
+
+## 🚀 快速使用指南 (Quick Start)
+
+Prism 是独立的环境，你可以将它放置在任何地方，但所有的操作都应该在一个**"工作区 (Workspace)"**目录下进行。
+
+### 0. 准备工作区
+在你的电脑上创建一个空文件夹作为工作区，比如 `~/knowledge/`。以后的所有对话和操作都应该在这个目录下启动 AI。
 
 ```bash
-# Python deps (for search scripts)
-pip install requests beautifulsoup4
-
-# Node.js deps (for Defuddle content extraction)
-npm install
+mkdir ~/knowledge
+cd ~/knowledge
+# 在此目录下启动你的 Agent（如 Claude Code）
 ```
 
-### 2. Use the harvest skill
+### 1. 启动监控与数据抓取 (Harvest)
+当你想了解一个新事物（比如 "Claude Code"）时，直接让 Agent 运行 `harvest` 技能。系统会自动建立专属的隔离目录：
 
-Ask your AI assistant (Cursor, Claude Code, Antigravity) to:
-> "harvest harness engineering"
-> "搜一下 LLM Wiki 相关内容"
+**对 Agent 说：**
+> "使用 harvest 技能，帮我搜索并抓取今天关于 Claude Code 的最新新闻"
 
-The skill will search 8+ sources, filter by relevance, fetch full content via Defuddle, and save to `wiki/raw/`.
+系统将自动在当前目录下创建 `claude_code/` 文件夹，并将抓取和过滤后的高价值内容存放在 `claude_code/.cache/enriched.json` 中。
 
-### 3. Use the prism skill
+### 2. 知识结晶化 (Prism)
+数据抓取完后，它们目前还只是一堆结构化的 JSON。为了把它们变成可以维护和阅读的知识库，你需要调用 `prism` 技能：
 
-Ask your AI assistant to:
-> "prism"
-> "整理 wiki"
-> "organize new raw content"
+**对 Agent 说：**
+> "使用 prism 技能，把刚刚获取到的 Claude Code 数据整理到知识库中"
 
-The skill scans `wiki/raw/` for unprocessed files and organizes them into `wiki/pages/`.
+此时，`prism` 技能会接管工作，阅读数据，识别概念和实体，创建并更新 Markdown 卡片。最终 `claude_code/` 将变成一个符合 "LLM Wiki" 标准的知识库。
 
-## Directory Structure
+### 3. 日常问答：单库查询
+如果你只想问关于某**一个**主题的问题，**不要调用任何 Skill**。
+你只需要进入那个知识库的目录，直接对话即可。知识库内的 `WIKI.md` 宪法会自动规范 Agent 的回答逻辑。
 
-```
-prism/
-  skills/
-    harvest/    Search + Defuddle content fetching → wiki/raw/
-    prism/      AI wiki organization → wiki/pages/
-  wiki/
-    raw/        Raw full-text articles (written by harvest)
-    pages/      Structured wiki pages (written by prism)
-    CLAUDE.md   AI maintenance instructions
+```bash
+cd ~/knowledge/claude_code
+# 对 Agent 说："Claude Code 的最新功能是什么？"
 ```
 
-## Tech Stack
+### 4. 智能路由：全局对比问答 (Router)
+当你在工作区积累了多个独立的知识库（例如既有 `claude_code` 又有 `codex`）后，你可以退回到工作区根目录，使用跨库全局路由。
 
-- **Search**: Python (requests + beautifulsoup4) — Bing, HackerNews, Sogou, Bilibili, Weibo, Twitter
-- **Content Extraction**: Node.js + [Defuddle](https://github.com/kepano/defuddle) — supports YouTube transcripts
-- **Knowledge Base**: Plain Markdown files with YAML frontmatter + wikilinks
+```bash
+cd ~/knowledge/
+```
+**对 Agent 说：**
+> "使用 router 技能，对比一下 Codex 和 Claude Code 在自动化编程上的差异点"
+
+Agent 会使用前置语义扩充，将你的问题发给 Router 脚本计算 BM25 得分，然后智能调度多个子 Agent 并行查阅各自的库，最终将跨库观点合并呈现给你。
+
+---
+
+✨ **Everything is a Markdown File.** 
+Prism 的知识库不需要特殊的数据库组件，不产生零碎的向量数据库维运成本。你可以随时通过 VS Code, Obsidian 甚至普通的记事本去浏览这颗生长的知识树。
+
+*Created continuously as part of Project Prism. Last Architecture Update: v2.1 2026-04*

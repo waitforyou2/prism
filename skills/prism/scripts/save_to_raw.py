@@ -194,6 +194,8 @@ def save_item(item: dict, wiki_dir: Path, today: str, keyword_override: str | No
     # Build paths
     keyword     = keyword_override or item.get("keyword") or "uncategorized"
     keyword_dir = slug(keyword)
+    target_dir  = wiki_dir / layer
+    day_dir     = target_dir / today / keyword_dir
     src_slug    = slug(source)
     fetched_at  = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 

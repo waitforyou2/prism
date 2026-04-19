@@ -229,6 +229,7 @@ def main():
     parser.add_argument('--keyword',     default=None, help='Override keyword for all items')
     parser.add_argument('--min-words',   type=int, default=MIN_WORD_COUNT, help='Full-text threshold (default: 100)')
     parser.add_argument('--dry-run',     action='store_true', help='Preview only, do not write files')
+    parser.add_argument('--in', dest='in_file', help='Input JSON file path (bypasses stdin)')
     args = parser.parse_args()
 
     wiki_dir  = Path(args.wiki_dir)
@@ -237,8 +238,12 @@ def main():
     raw_index_path = wiki_dir / "raw"     / "_index.json"
     sig_index_path = wiki_dir / "signals" / "_index.json"
 
-    # Read stdin
-    raw_stdin = sys.stdin.read()
+    # Read input
+    if args.in_file:
+        raw_stdin = Path(args.in_file).read_text(encoding='utf-8')
+    else:
+        raw_stdin = sys.stdin.read()
+        
     try:
         items = json.loads(raw_stdin)
         if not isinstance(items, list):

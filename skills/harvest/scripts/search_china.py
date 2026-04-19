@@ -369,6 +369,7 @@ def main():
     parser.add_argument("--limit", type=int, default=20, help="Max results per source (default: 20)")
     parser.add_argument("--detect-account", action="store_true",
                         help="Detect if keyword is a Bilibili account and fetch their latest videos")
+    parser.add_argument("--out", help="Output JSON file path (bypasses stdout)")
     args = parser.parse_args()
 
     sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()]
@@ -412,7 +413,13 @@ def main():
         all_results.extend(results)
 
     print(f"\nTotal: {len(all_results)} results", file=sys.stderr)
-    json.dump(all_results, sys.stdout, ensure_ascii=False, indent=2)
+    
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(all_results, f, ensure_ascii=False, indent=2)
+        print(f"Saved to {args.out}", file=sys.stderr)
+    else:
+        json.dump(all_results, sys.stdout, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":

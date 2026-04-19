@@ -16,6 +16,7 @@
 
 import { Defuddle } from 'defuddle/node';
 import { JSDOM } from 'jsdom';
+import fs from 'fs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -228,9 +229,15 @@ async function processBatch(items) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // Read JSON from stdin
+  const inFile = getArg(args, '--in');
+  const outFile = getArg(args, '--out');
+
   let raw = '';
-  for await (const chunk of process.stdin) raw += chunk;
+  if (inFile) {
+    raw = fs.readFileSync(inFile, 'utf8');
+  } else {
+    for await (const chunk of process.stdin) raw += chunk;
+  }
 
   let items;
   try {
@@ -264,7 +271,12 @@ async function main() {
   const failCount = output.filter(i => i.fetchStatus === 'failed').length;
   log(`\n✨ Done: ${okCount} ok, ${failCount} failed, ${items.length - okCount - failCount} skipped`);
 
-  process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+  if (outFile) {
+    fs.writeFileSync(outFile, JSON.stringify(output, null, 2) + '\n', 'utf8');
+    log(`💾 Saved directly to ${outFile}`);
+  } else {
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+  }
 }
 
 main().catch(err => {

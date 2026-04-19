@@ -21,19 +21,21 @@ python skills/prism/scripts/scan_raw.py  # should work immediately
 
 ## Core Workflow
 
-### Phase 1: Environment Bootstrapping (Initialization)
+### Phase 1: Environment Bootstrapping & Target Identification
 
-Always check if `wiki/CLAUDE.md` exists in the workspace before starting.
+Determine the target topic workspace from the user's request (e.g., if the user says "organize the claude wiki", the target topic is `claude/`). If no specific topic is mentioned, ask the user or default to `./`.
 
-**If `wiki/CLAUDE.md` does NOT exist:**
+Always check if `[topic]/wiki/CLAUDE.md` exists in the targeted workspace before starting.
+
+**If `[topic]/wiki/CLAUDE.md` does NOT exist:**
 1. Determine that the knowledge base needs initialization.
-2. Create the raw and pages directories: `wiki/raw/` and `wiki/pages/`.
-3. Create `wiki/CLAUDE.md` by copying the exact system instructions found in `skills/prism/references/default_claude_template.md`.
-4. Create a welcoming basic page `wiki/pages/concepts/Prism Wiki.md` introducing the initialized knowledge base.
+2. Create the raw and pages directories: `[topic]/wiki/raw/` and `[topic]/wiki/pages/`.
+3. Create `[topic]/wiki/CLAUDE.md` by copying the exact system instructions found in `skills/prism/references/default_claude_template.md`.
+4. Create a welcoming basic page `[topic]/wiki/pages/concepts/Prism Wiki.md` introducing the initialized knowledge base.
 5. Notify the user briefly about the initialization completion.
 6. **Immediately PROCEED to Phase 2** to process any pending items.
 
-**If `wiki/CLAUDE.md` DOES exist:**
+**If `[topic]/wiki/CLAUDE.md` DOES exist:**
 Proceed directly to Phase 2.
 
 ### Phase 2: Crystallization (Data Processing)
@@ -41,7 +43,7 @@ Proceed directly to Phase 2.
 ### Step 1: Scan for unprocessed files
 
 ```bash
-python skills/prism/scripts/scan_raw.py
+python skills/prism/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 ```
 
 This outputs a prioritized Markdown list of all unprocessed raw files, sorted by importance → relevance.
@@ -61,7 +63,7 @@ For each unprocessed file listed (start with Urgent and High importance):
 For each raw file, decide:
 
 **Check existing pages first:**
-- Look at `wiki/pages/` directory
+- Look at `[topic]/wiki/pages/` directory
 - Is there already a `concepts/` or `entities/` page about this topic?
 
 **Decision tree:**
@@ -79,9 +81,9 @@ relevance < 50 OR importance = low
   → skip, just mark as processed
 ```
 
-### Step 4: Write or update wiki/pages/
+### Step 4: Write or update [topic]/wiki/pages/
 
-Follow all conventions in `wiki/CLAUDE.md`:
+Follow all conventions in `[topic]/wiki/CLAUDE.md`:
 
 - **Page format**: Use the exact frontmatter schema from CLAUDE.md
 - **Wikilinks**: Use `[[Page Title]]` when referencing other wiki pages
@@ -104,16 +106,16 @@ After processing each raw file, update its `.meta.json` sidecar:
 After all files are processed:
 
 ```bash
-python skills/prism/scripts/update_index.py
+python skills/prism/scripts/update_index.py --wiki-dir [topic]/wiki/
 ```
 
-This regenerates `wiki/pages/_index.md` with all current pages.
+This regenerates `[topic]/wiki/pages/_index.md` with all current pages.
 
 ## Reference Files
 
-- [wiki/CLAUDE.md](../../wiki/CLAUDE.md) — **PRIMARY REFERENCE**: page formats, operation rules, tags
-- [references/wiki-schema.md](references/wiki-schema.md) — Extended page templates
-- [references/category-guide.md](references/category-guide.md) — When to use each category
+- `[topic]/wiki/CLAUDE.md` — **PRIMARY REFERENCE**: page formats, operation rules, tags
+- `skills/prism/references/wiki-schema.md` — Extended page templates
+- `skills/prism/references/category-guide.md` — When to use each category
 
 ## Script Reference
 

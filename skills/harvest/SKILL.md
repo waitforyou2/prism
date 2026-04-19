@@ -26,12 +26,17 @@ Optional: set `TWITTER_API_KEY` env var for Twitter search.
 
 ## Core Workflow
 
-### Step 1: Understand intent
+### Step 1: Understand intent & Create Workspace
 
-Determine keyword(s) and scope:
-- **Broad discovery**: "最近AI有什么热点" → use `AI`, `人工智能`, `大模型` as keywords
-- **Specific tracking**: "帮我关注 Harness Engineering" → use `harness engineering` as keyword
-- **Multi-keyword**: support multiple keywords, run sequentially with 3s delay
+Determine keyword(s) and scope. Then establish the fractal knowledge base workspace for this keyword (slugified):
+- **Directory Structure**: Create `[keyword]/` in the project root.
+- **Cache & Wiki**: Create `[keyword]/.cache/` and `[keyword]/wiki/`. All subsequent temporary files MUST go into `.cache/`.
+
+Example setup for keyword "claude":
+```bash
+mkdir -p claude/.cache
+mkdir -p claude/wiki
+```
 
 ### Step 2: Search all sources (Reference `references/search-sources.md`)
 
@@ -39,16 +44,16 @@ Run in parallel (international + Chinese):
 
 ```bash
 # International (Bing, HackerNews, DuckDuckGo)
-python skills/harvest/scripts/search_web.py "keyword" --sources bing,hackernews --limit 15
+python skills/harvest/scripts/search_web.py "keyword" --sources bing,hackernews --limit 15 --out [keyword]/.cache/web.json
 
 # Chinese (Sogou, Bilibili, Weibo)
-python skills/harvest/scripts/search_china.py "keyword" --sources sogou,bilibili,weibo --limit 15
+python skills/harvest/scripts/search_china.py "keyword" --sources sogou,bilibili,weibo --limit 15 --out [keyword]/.cache/zh.json
 
 # Optional: Twitter (requires TWITTER_API_KEY)
-python skills/harvest/scripts/search_twitter.py "keyword" --limit 15
+python skills/harvest/scripts/search_twitter.py "keyword" --limit 15 --out [keyword]/.cache/twitter.json
 ```
 
-Merge all JSON arrays into one combined result set.
+Merge all JSON arrays into one combined result set as `[keyword]/.cache/search_results_raw.json`.
 
 ### Step 3: AI analysis (Reference `references/analysis-guide.md`)
 
@@ -58,7 +63,7 @@ For each result, evaluate:
 3. **importance** — `low` / `medium` / `high` / `urgent`
 4. **summary** — one-sentence Chinese summary of the relationship to keyword
 
-**AI Action**: Create a minimal JSON file (`annotations.json`) mapping the array indices (or URLs) to your decisions. For example:
+**AI Action**: Create a minimal JSON file (`[keyword]/.cache/annotations.json`) mapping the array indices (or URLs) to your decisions. For example:
 ```json
 {
   "0": { "isReal": true, "relevance": 90, "importance": "high", "summary": "..." },
@@ -69,7 +74,7 @@ For each result, evaluate:
 
 Apply the filter:
 ```bash
-python skills/harvest/scripts/apply_filter.py --raw search_results_raw.json --ann annotations.json --out annotated_results.json --keyword "harness engineering"
+python skills/harvest/scripts/apply_filter.py --raw [keyword]/.cache/search_results_raw.json --ann [keyword]/.cache/annotations.json --out [keyword]/.cache/annotated_results.json --keyword "harness engineering"
 ```
 
 Present top results in structured format:
@@ -88,15 +93,12 @@ Present top results in structured format:
 
 ### Step 5: Full-text fetch + save to raw layer
 
-> [!WARNING]
-> **Windows Users**: You MUST run these piping/redirection commands in **Command Prompt (`cmd.exe`)** (or Git Bash/WSL), NOT PowerShell. PowerShell native redirection `<` `>` modifies string encodings and will corrupt the JSON formatting!
-
-```cmd
+```bash
 # Fetch full content via Defuddle (and follow redirects)
-node skills/harvest/scripts/fetch_content.js < annotated_results.json > enriched.json
+node skills/harvest/scripts/fetch_content.js --in [keyword]/.cache/annotated_results.json --out [keyword]/.cache/enriched.json
 
-# Save to wiki/raw/ (full-text) or wiki/signals/ (snippets)
-python skills/harvest/scripts/save_to_raw.py --keyword "harness engineering" < enriched.json
+# Save to isolated workspace wiki layer
+python skills/harvest/scripts/save_to_raw.py --keyword "harness engineering" --in [keyword]/.cache/enriched.json --wiki-dir [keyword]/wiki
 ```
 
 Report to user:

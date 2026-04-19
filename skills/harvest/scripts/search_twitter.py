@@ -218,20 +218,25 @@ def main():
     parser.add_argument("--limit", type=int, default=20, help="Max results (default: 20)")
     parser.add_argument("--trends", action="store_true", help="Get worldwide trending topics")
     parser.add_argument("--user", help="Get latest tweets from a specific user")
+    parser.add_argument("--out", help="Output JSON file path (bypasses stdout)")
     args = parser.parse_args()
 
     if args.trends:
-        trends = get_trends()
-        json.dump(trends, sys.stdout, ensure_ascii=False, indent=2)
+        results = get_trends()
     elif args.user:
         results = get_user_tweets(args.user)
-        json.dump(results, sys.stdout, ensure_ascii=False, indent=2)
     elif args.query:
         results = search_twitter(args.query, args.limit)
-        json.dump(results, sys.stdout, ensure_ascii=False, indent=2)
     else:
         parser.print_help()
         sys.exit(1)
+        
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        print(f"Saved to {args.out}", file=sys.stderr)
+    else:
+        json.dump(results, sys.stdout, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":

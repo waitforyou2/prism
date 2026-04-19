@@ -374,6 +374,7 @@ def main():
     parser.add_argument("--sources", default=",".join(ALL_SOURCES),
                         help=f"Comma-separated sources (default: {','.join(ALL_SOURCES)})")
     parser.add_argument("--limit", type=int, default=20, help="Max results per source (default: 20)")
+    parser.add_argument("--out", help="Output JSON file path (bypasses stdout)")
     args = parser.parse_args()
 
     sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()]
@@ -393,7 +394,13 @@ def main():
 
     unique = deduplicate(all_results)
     print(f"\nTotal: {len(all_results)} → {len(unique)} after dedup", file=sys.stderr)
-    json.dump(unique, sys.stdout, ensure_ascii=False, indent=2)
+    
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(unique, f, ensure_ascii=False, indent=2)
+        print(f"Saved to {args.out}", file=sys.stderr)
+    else:
+        json.dump(unique, sys.stdout, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":

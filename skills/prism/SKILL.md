@@ -106,11 +106,16 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
    - Append entries to `[topic]/wiki/log.md`
    - After all done, run:
      ```bash
-     python $SKILL_DIR/scripts/update_index.py --wiki-dir [topic]/wiki/
+     python $SKILL_DIR/scripts/update_index.py --wiki-dir [topic]/wiki/ --kb-id [topic]
      ```
    - Update `[topic]/wiki/index.md`
+   - **Auto-register** (only if router skill is installed): infer `$ROUTER_SKILL_DIR` as a sibling of this skill's parent `skills/` directory, then run:
+     ```bash
+     python $ROUTER_SKILL_DIR/scripts/discover.py --workspace . --out .prism/registry.json
+     ```
+     If `$ROUTER_SKILL_DIR/scripts/discover.py` does not exist, skip silently.
 
-4. **If raw/ is empty or all compiled** → enter **Query** mode: read `index.md`, answer user's question from existing pages.
+4. **If raw/ is empty or all compiled** → the WIKI.md constitution handles Query mode directly. No action needed from this skill.
 
 5. **If user asked for a health check** → run **Lint** as defined in WIKI.md.
 
@@ -122,4 +127,5 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 |--------|---------|-------------|
 | `save_to_raw.py` | Ingest enriched JSON into `wiki/raw/` and `wiki/signals/` | `--in`, `--wiki-dir`, `--keyword` |
 | `scan_raw.py` | List uncompiled files from `wiki/raw/_index.json` | `--wiki-dir`, `--keyword`, `--json` |
-| `update_index.py` | Rebuild `wiki/pages/_index.md` from page files | `--wiki-dir` |
+| `update_index.py` | Rebuild `wiki/index.md` from page files | `--wiki-dir`, `--kb-id` |
+

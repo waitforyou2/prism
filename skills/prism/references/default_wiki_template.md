@@ -1,3 +1,11 @@
+---
+kb_id: ""
+kb_name: ""
+description: ""
+tags: []
+created: ""
+---
+
 # LLM Wiki — 知识库宪法
 
 你是这个知识库的 AI 维护者。
@@ -96,6 +104,11 @@ relevance < 50 OR importance = low
 2. 阅读对应页面内容
 3. 综合多页面信息回答，使用 `[[Page Title]]` 格式引用来源页面
 4. 如果回答中发现了新的有价值的分析或比较，将其保存为新的 synthesis 页面
+5. 追加日志条目到 `log.md`：
+```markdown
+## [YYYY-MM-DD] query | "用户问题"
+回答引用: [[Page A]], [[Page B]]
+```
 
 ### 3. Lint（健康检查）
 
@@ -240,6 +253,8 @@ updated: YYYY-MM-DD
 4. **链接规范**：提及其他 wiki 页面时使用 `[[Page Title]]`
 5. **来源透明**：每段新信息都要在"关键来源"或"重要进展"中引用 URL
 6. **更新时间戳**：修改页面后更新 frontmatter 的 `updated` 和 `sources` 计数
+7. **跨库引用**：引用其他知识库的页面时使用 `[[Page Title@kb_id]]` 格式
+   例：`[[Codex CLI@codex]]` 表示 codex 知识库中的 Codex CLI 页面
 
 ---
 
@@ -249,6 +264,11 @@ updated: YYYY-MM-DD
 # 知识目录
 
 > 最后更新: YYYY-MM-DD | 共 N 个页面
+
+## 📋 知识库概述
+
+**标签**: tag1, tag2, tag3
+**覆盖主题**: Topic A, Topic B, ...
 
 ## 📐 Concepts (N)
 
@@ -276,4 +296,8 @@ updated: YYYY-MM-DD
 
 ## [YYYY-MM-DD] query | "Claude Code 最新变化？"
 回答引用: [[Claude Code]], [[Anthropic]]
+
+## [YYYY-MM-DD] route_query | "Codex 和 Claude Code 哪个好？"
+路由策略: multi_kb | 匹配: claude (0.95), codex (0.90)
+回答引用: [[Claude Code@claude]], [[Codex CLI@codex]]
 ```

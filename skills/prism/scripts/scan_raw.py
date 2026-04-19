@@ -115,7 +115,7 @@ def main():
             print()
 
     print("---")
-    print(f"*运行 `prism` skill 按照 `wiki/CLAUDE.md` 的规范将这些内容整理到 `wiki/pages/`*")
+    print(f"*运行 `prism` skill 按照 `wiki/WIKI.md` 的规范将这些内容整理到 `wiki/pages/`*")
 
 
 if __name__ == "__main__":

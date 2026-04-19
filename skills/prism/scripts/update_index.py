@@ -5,9 +5,13 @@ update_index.py — Rebuild wiki/pages/_index.md from existing page files.
 Scans wiki/pages/ for all .md files, reads their frontmatter,
 and regenerates the _index.md table of contents.
 
+Also writes machine-readable frontmatter to index.md so that
+discover.py can extract KB metadata without full parsing.
+
 Usage:
   python update_index.py
   python update_index.py --wiki-dir /path/to/wiki
+  python update_index.py --wiki-dir /path/to/wiki --kb-id claude
 """
 
 import argparse
@@ -112,14 +116,66 @@ def scan_pages(wiki_dir: Path) -> dict[str, list]:
     return groups
 
 
-def build_index(groups: dict, wiki_dir: Path) -> str:
+def build_kb_summary(groups: dict) -> str:
+    """Generate a concise summary of the knowledge base for router discovery."""
+    all_tags: set[str] = set()
+    all_titles: list[str] = []
+
+    for items in groups.values():
+        for page in items:
+            all_titles.append(page["title"])
+            if page.get("tags"):
+                for t in str(page["tags"]).split(","):
+                    t = t.strip().strip("[]'\" ")
+                    if t:
+                        all_tags.add(t)
+
+    parts = []
+    if all_tags:
+        parts.append(f"**标签**: {', '.join(sorted(all_tags))}")
+    if all_titles:
+        preview = ", ".join(all_titles[:15])
+        suffix = f" ... 等 {len(all_titles)} 个主题" if len(all_titles) > 15 else ""
+        parts.append(f"**覆盖主题**: {preview}{suffix}")
+
+    return "\n".join(parts) if parts else "(空知识库)"
+
+
+def build_index(groups: dict, wiki_dir: Path, kb_id: str = "") -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     total = sum(len(v) for v in groups.values())
 
-    lines = [
+    # Collect all tags for frontmatter
+    all_tags: set[str] = set()
+    for items in groups.values():
+        for page in items:
+            if page.get("tags"):
+                for t in str(page["tags"]).split(","):
+                    t = t.strip().strip("[]'\" ")
+                    if t:
+                        all_tags.add(t)
+    tags_str = ", ".join(sorted(all_tags)) if all_tags else ""
+
+    # Machine-readable frontmatter (consumed by discover.py)
+    fm_lines = ["---"]
+    if kb_id:
+        fm_lines.append(f"kb_id: {kb_id}")
+    fm_lines.append(f"page_count: {total}")
+    fm_lines.append(f"updated: {now}")
+    if tags_str:
+        fm_lines.append(f"tags: [{tags_str}]")
+    fm_lines += ["---", ""]
+
+    lines = fm_lines + [
         "# Prism Wiki — 知识目录",
         "",
         f"> 最后更新: {now} | 共 {total} 个页面",
+        "",
+        "## 📋 知识库概述",
+        "",
+        build_kb_summary(groups),
+        "",
+        "---",
         "",
     ]
 
@@ -144,9 +200,9 @@ def build_index(groups: dict, wiki_dir: Path) -> str:
                 title_display = title
 
             if desc:
-                lines.append(f"- [[{title}]]({path}) — {desc}")
+                lines.append(f"- [[{title_display}]]({path}) — {desc}")
             else:
-                lines.append(f"- [[{title}]]({path})")
+                lines.append(f"- [[{title_display}]]({path})")
 
         lines.append("")
 
@@ -156,8 +212,9 @@ def build_index(groups: dict, wiki_dir: Path) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Rebuild wiki/pages/_index.md')
+    parser = argparse.ArgumentParser(description='Rebuild wiki/index.md')
     parser.add_argument('--wiki-dir', default=str(DEFAULT_WIKI_DIR))
+    parser.add_argument('--kb-id', default="", help='Knowledge base ID to embed in frontmatter')
     args = parser.parse_args()
 
     wiki_dir  = Path(args.wiki_dir)
@@ -174,13 +231,18 @@ def main():
         print("ℹ️ No pages found in wiki/pages/ — index not updated")
         return
 
-    content    = build_index(groups, wiki_dir)
-    index_path = pages_dir / "_index.md"
+    # Infer kb_id from directory name if not provided
+    kb_id = args.kb_id or wiki_dir.parent.name
+
+    content    = build_index(groups, wiki_dir, kb_id)
+    index_path = wiki_dir / "index.md"
     index_path.write_text(content, encoding='utf-8')
 
     print(f"✅ Updated {index_path}")
     print(f"   {total} pages: "
           + ", ".join(f"{len(groups[k])} {k}s" for k in ["concept", "entity", "synthesis"] if groups[k]))
+    if kb_id:
+        print(f"   kb_id: {kb_id}")
 
 
 if __name__ == "__main__":

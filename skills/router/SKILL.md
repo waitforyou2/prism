@@ -107,20 +107,19 @@ One knowledge base matched. Construct a SubAgent prompt using the template at
 
 - `{kb_id}` — the matched KB's id
 - `{wiki_abs_path}` — absolute path to the KB's wiki directory
-- `{const_filename}` — the constitution filename (e.g., `WIKI.md`, `CLAUDE.md`) from registry
-- `{const_content}` — full text of `[wiki_abs_path]/{const_filename}`
+- `{wiki_md_content}` — full text of the knowledge base constitution (e.g., `WIKI.md`, `CLAUDE.md`, or `AGENTS.md`)
 - `{index_md_content}` — full text of `[wiki_abs_path]/index.md`
 - `{question}` — the user's **original** question (NOT the expanded query)
 
 Dispatch the SubAgent. The SubAgent will:
-1. Read the constitution document (e.g., `WIKI.md` or `CLAUDE.md`) to understand its Query mode.
+1. Read the constitution (Search for `WIKI.md`, `CLAUDE.md`, or `AGENTS.md` and read whichever exists).
 2. Read index.md to locate initial candidate pages (Overviews, Entities, Concepts).
 3. **Recursive Exploration**: Read candidate files and proactively follow internal `[[Wiki Links]]` to pivot or drill down into related details.
 4. Return a structured answer with high source density.
 
 **After receiving the SubAgent result:**
 - Present the answer to the user
-- Append a log entry to `[wiki_abs_path]/log.md` (or the operational log specified in the constitution):
+- Append a log entry to `[wiki_abs_path]/log.md`:
   ```markdown
   ## [YYYY-MM-DD] route_query | "[用户原始问题]"
   路由策略: single_kb | 匹配: {kb_id} (score={score})

@@ -13,7 +13,8 @@
 2. **完全可移植**：技能包 `skills/` 可放置于任何目录，通过 `$SKILL_DIR` 自动定位。
 3. **分形知识库架构**：每个热点主题独立一个目录，下含 `.cache/` 和 `wiki/`。
 4. **宪法驱动**：所有决策由各知识库自己的 `WIKI.md` 宪法驱动。**单库问答直接由宪法接管，无需 skill。**
-5. **SubAgent 隔离**：Router 派发 SubAgent 进入各库目录，上下文完全隔离。
+5. **智能探索 (Agentic Exploration)**：SubAgent 不再进行单次总结，而是具备递归检索能力，主动追踪 `[[双链]]` 以深入 Entity/Concept 细节。
+6. **高密度结晶 (Rich Crystallization)**：坚持“榨干数据”原则，确保 Overview 页面反映 Data Pool 的全景。
 
 ### 心智模型（三 Skill 分工）
 
@@ -62,7 +63,7 @@ skills/
   router/
     SKILL.md              引导程序：语义扩充契约 → BM25 打分 → SubAgent
     references/
-      subagent_prompt.md  SubAgent 模板
+      subagent_prompt.md  SubAgent 模板 (支持递归探索与链路追踪)
       routing_guide.md    路由策略与合并规则 (v2.1)
     scripts/
       discover.py         生成 BM25 语料
@@ -76,10 +77,13 @@ skills/
 | 决策 | 结论 |
 |------|------|
 | 路由架构 v2.1 | **Agent 语义前置**：宿主 Agent 负责提问扩充，脚本负责纯文本 BM25 打分。 |
+| 检索逻辑 | **智能探索**：SubAgent 具备 Link Discovery → Recursive Search → Synthesis 的能力。 |
+| 结晶标准 | **高密度 Overview**：Overview 页面被定义为 Data Pool 的“最强综述”，支持多维度视角。 |
+| 批量预审 | **Batch Intelligence**：编译前先全量扫描 metadata，建立全局视图后再下笔。 |
 | 分词策略 | **混合分词**：英文单词切分 + 中文 Character Bigram（二元组），极大提升区分度。 |
 | 检索算法 | **BM25Okapi**：本地化实现，零网络开销，零依赖。 |
 | 节点命名 | `processed` → `compiled`（语义更准确）|
-| 宪法文件名 | `CLAUDE.md` → `WIKI.md`（品牌无关）|
+| 宪法文件名 | `WIKI.md` 为主，支持灵活识别 `CLAUDE.md`, `AGENTS.md` 等。 |
 | 跨库引用 | `[[Page Title@kb_id]]` 语法 |
 
 ---

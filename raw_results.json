@@ -1,0 +1,116 @@
+[
+  {
+    "title": "affaan-m/everything-claude-code",
+    "content": "The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode, Cursor and beyond.",
+    "url": "https://github.com/affaan-m/everything-claude-code",
+    "source": "github",
+    "sourceId": "1136590548",
+    "viewCount": 160262,
+    "likeCount": 160262,
+    "author": {
+      "name": "affaan-m",
+      "username": "affaan-m"
+    },
+    "publishedAt": "2026-04-18T17:23:31Z"
+  },
+  {
+    "title": "x1xhlol/system-prompts-and-models-of-ai-tools",
+    "content": "FULL Augment Code, Claude Code, Cluely, CodeBuddy, Comet, Cursor, Devin AI, Junie, Kiro, Leap.new, Lovable, Manus, NotionAI, Orchids.app, Perplexity, Poke, Qoder, Replit, Same.dev, Trae, Traycer AI, VSCode Agent, Warp.dev, Windsurf, Xcode, Z.ai Code, Dia & v0. (And other Open Sourced) System Prompts, Internal Tools & AI Models",
+    "url": "https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools",
+    "source": "github",
+    "sourceId": "943398999",
+    "viewCount": 135471,
+    "likeCount": 135471,
+    "author": {
+      "name": "x1xhlol",
+      "username": "x1xhlol"
+    },
+    "publishedAt": "2026-04-18T17:24:13Z"
+  },
+  {
+    "title": "Claude Code Opus 4.7 keeps checking on malware",
+    "content": "So during development, at every task I start, I see a line like this:<p>`Own bug file — not malware.`<p>It seems that it&#x27;s obsessively checking if it&#x27;s working on malware production.<p>In another situation where I was working on a parser of a HTML document with JS, it refused because it believed that I was bypassing security measurements.<p>I believe AI has to be supportive in the work that I&#x27;m doing. When it&#x27;s obsessively checking me if I am doing anything wrong or abusing the system, I have the feeling it is controlling me. I understand that we do have guardrails and I also understand that it&#x27;s very important that people do not abuse this new tech for bad stuff.<p>I pay $200 per month for a max subscription. They already know who I am. Claude knows I work in scraper tech, and it also knows that our clients are the companies we scrape.<p>Now with Opus 4.7, I&#x27;ve had a situation that it refused to continue because I asked to automate the cookie creation with a Chrome extension.<p>In a situation where someone is abusing the system, let&#x27;s say create malware or hacking stuff with bad intentions. I can imagine there will be some signal system or algorithm that can form an opinion about the intentions that someone has. But now that the AI is limiting me in my work, I feel a little bit disrupted. Who the hell does this system think he is to limit me?<p>Am I going to accept this in the future? That a system will tell me that I cannot continue because I don&#x27;t have sufficient rights or beliefs that I&#x27;m doing anything wrong.<p>I can work fine on the local AI on my Blackwell GPU. But of course, I want to use the latest tech, the latest AI and the best models available. Is this the beginning of a split? Where good people and naughty people make different choices? Am I the bad guy now?<p>Last year I passed 40. I grew up reading, talking about Kevin Mitnick. I was a member of a local computer club. Hacking stuff as a 14-year-old kid who did not have intentions to break anything but to outsmart systems. Is that area gone now? Is the newer generation going to accept that they have to please the AI?",
+    "url": "https://news.ycombinator.com/item?id=47814832",
+    "source": "hackernews",
+    "sourceId": "47814832",
+    "publishedAt": "2026-04-18T10:46:17Z",
+    "score": 56,
+    "commentCount": 54,
+    "author": {
+      "name": "decide1000",
+      "username": "decide1000"
+    }
+  },
+  {
+    "title": "Claude Code is unable to respond to this request",
+    "content": "I hit a restriction, while using Claude Code today:\nAPI Error: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https:&#x2F;&#x2F;www.anthropic.com&#x2F;legal&#x2F;aup). Please double press esc to edit your last message or      start a new session for Claude Code to assist with a different task. If you are seeing this refusal repeatedly, try running &#x2F;model claude-sonnet-4-20250514 to switch models.<p>Well, this is something new in Opus 4.7, or at least I see it for a first time now. No such security gates seen before.<p>I am asking it to process am email, provided as eml file, but the email contains my address, and my sisters&#x27;. And this is treated as personal sensitive data, that it does not want to process. If I just copy and provide the mail content, without the real email addresses, it works fine :D<p>Have you seen something like this, or anything similar?",
+    "url": "https://news.ycombinator.com/item?id=47809543",
+    "source": "hackernews",
+    "sourceId": "47809543",
+    "publishedAt": "2026-04-17T19:19:16Z",
+    "score": 5,
+    "commentCount": 2,
+    "author": {
+      "name": "sminchev",
+      "username": "sminchev"
+    }
+  },
+  {
+    "title": "Claude Code 生态爆发：5个必知的新工具",
+    "content": "现在很多同学还是把 Claude Code 当成一个“可以在终端里写代码的 AI 工具”。 但是，这两天我越来越觉得，Claude Code 这玩意儿已经不是单个工具了，它开始长生态了...",
+    "url": "https://juejin.cn/post/7619279067029209128",
+    "source": "juejin",
+    "sourceId": "7619279067029209128",
+    "viewCount": 10125,
+    "author": {
+      "name": "程序员Sunday",
+      "username": "2963939078980712"
+    },
+    "likeCount": 146
+  },
+  {
+    "title": "Claude Code 项目实战：多 Agent 流程编排，从原型到可运行 ChatBot",
+    "content": "本文会以一个 Web 端大模型聊天机器人（ChatBot）为目标，从前端设计到后端开发，带你体验两种截然不同的开发模式：一句话全自动生成 vs 多 Agent 流水线协作。",
+    "url": "https://juejin.cn/post/7627665051668267023",
+    "source": "juejin",
+    "sourceId": "7627665051668267023",
+    "viewCount": 1252,
+    "author": {
+      "name": "星浩AI",
+      "username": "2904236059009760"
+    },
+    "likeCount": 11
+  },
+  {
+    "title": "【2026 顶新版】字节大佬亲自操刀Claude Code全栈教程，从入门到精通，案例实操带你搞定所有开发场景！",
+    "content": "这也是2026B站最新最系统的Claude Code + 自动化工作流教学课程，小白10分钟轻松上手！\n求三连~求三连~求三连~求三连~求三连~求三连~求三连~求三连~求三连~求三连~求三连~求三连~",
+    "url": "https://www.bilibili.com/video/BV1rXdpBrEZr",
+    "source": "bilibili",
+    "sourceId": "BV1rXdpBrEZr",
+    "publishedAt": "2026-04-18T16:50:38+00:00",
+    "viewCount": 1,
+    "likeCount": 0,
+    "commentCount": 0,
+    "danmakuCount": 0,
+    "author": {
+      "name": "李尔的知识库",
+      "username": "1660646223"
+    }
+  },
+  {
+    "title": "Claude Design什么水平？导致Figma股价大跌！",
+    "content": "Claude Design什么水平？导致Figma股价大跌！",
+    "url": "https://www.bilibili.com/video/BV1S7dWBWEFC",
+    "source": "bilibili",
+    "sourceId": "BV1S7dWBWEFC",
+    "publishedAt": "2026-04-18T15:37:29+00:00",
+    "viewCount": 854,
+    "likeCount": 17,
+    "commentCount": 3,
+    "danmakuCount": 2,
+    "author": {
+      "name": "栗氪聊AI",
+      "username": "67389029"
+    }
+  }
+]

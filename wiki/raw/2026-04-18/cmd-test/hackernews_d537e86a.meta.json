@@ -1,0 +1,16 @@
+{
+  "path": "raw/2026-04-18/cmd-test/hackernews_d537e86a.md",
+  "keyword": "cmd test",
+  "title": "Claude Code is unable to respond to this request",
+  "url": "https://news.ycombinator.com/item?id=47809543",
+  "source": "hackernews",
+  "relevance": 90,
+  "importance": 8,
+  "isReal": true,
+  "fetchedAt": "2026-04-18T17:30:08Z",
+  "fetchStatus": "ok",
+  "wordCount": 207,
+  "author": "sminchev",
+  "publishedAt": "2026-04-17",
+  "processed": false
+}

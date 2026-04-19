@@ -21,6 +21,23 @@ python skills/prism/scripts/scan_raw.py  # should work immediately
 
 ## Core Workflow
 
+### Phase 1: Environment Bootstrapping (Initialization)
+
+Always check if `wiki/CLAUDE.md` exists in the workspace before starting.
+
+**If `wiki/CLAUDE.md` does NOT exist:**
+1. Determine that the knowledge base needs initialization.
+2. Create the raw and pages directories: `wiki/raw/` and `wiki/pages/`.
+3. Create `wiki/CLAUDE.md` by copying the exact system instructions found in `skills/prism/references/default_claude_template.md`.
+4. Create a welcoming basic page `wiki/pages/concepts/Prism Wiki.md` introducing the initialized knowledge base.
+5. Notify the user briefly about the initialization completion.
+6. **Immediately PROCEED to Phase 2** to process any pending items.
+
+**If `wiki/CLAUDE.md` DOES exist:**
+Proceed directly to Phase 2.
+
+### Phase 2: Crystallization (Data Processing)
+
 ### Step 1: Scan for unprocessed files
 
 ```bash

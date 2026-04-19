@@ -202,8 +202,10 @@ def save_item(item: dict, wiki_dir: Path, today: str, keyword_override: str | No
     frontmatter = build_frontmatter(item_with_kw, fetched_at)
     content     = build_content(item_with_kw, frontmatter)
 
-    day_dir   = wiki_dir / layer / today / keyword_dir
-    base_name = f"{src_slug}_{fingerprint}"
+    # Build filename from title (human-readable) + short hash (collision-proof)
+    title       = item.get("title", "") or ""
+    title_slug  = slug(title) if title else src_slug
+    base_name = f"{title_slug}_{fingerprint}"
     md_path   = day_dir / f"{base_name}.md"
     meta_path = day_dir / f"{base_name}.meta.json"
     rel_path  = str(md_path.relative_to(wiki_dir)).replace('\\', '/')

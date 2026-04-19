@@ -87,16 +87,34 @@ Append to `[topic]/wiki/log.md`:
 来源: harvest | keyword: "[topic]"
 ```
 
-## Phase 3: Delegate to Constitution
+## Phase 3: Execute Constitution (DO NOT STOP — continue immediately)
 
-Read `[topic]/wiki/WIKI.md` and follow its instructions.
+**You MUST now read and execute the constitution. Do not ask the user for permission.**
 
-**WIKI.md defines all knowledge operations:**
-- **Compile**: scan `raw/` for `"compiled": false` → compile into `pages/`
-- **Query**: search `index.md` → read relevant pages → synthesize answer
-- **Lint**: health-check for contradictions, orphans, missing cross-references
+1. Read `[topic]/wiki/WIKI.md` in full
+2. Run the scan to find all uncompiled documents:
 
-The SKILL.md's job ends here. Everything from this point is driven by the constitution.
+```bash
+python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
+```
+
+3. **If there are uncompiled documents** → immediately proceed with the **Compile** operation as defined in WIKI.md:
+   - Read each uncompiled raw file
+   - Decide: create new page or update existing page (follow WIKI.md decision tree)
+   - Write/update pages in `[topic]/wiki/pages/`
+   - Mark each `.meta.json` as `"compiled": true`
+   - Append entries to `[topic]/wiki/log.md`
+   - After all done, run:
+     ```bash
+     python $SKILL_DIR/scripts/update_index.py --wiki-dir [topic]/wiki/
+     ```
+   - Update `[topic]/wiki/index.md`
+
+4. **If raw/ is empty or all compiled** → enter **Query** mode: read `index.md`, answer user's question from existing pages.
+
+5. **If user asked for a health check** → run **Lint** as defined in WIKI.md.
+
+> The constitution (WIKI.md) is the authoritative guide. Follow it exactly for all formatting, classification, and writing conventions.
 
 ## Script Reference
 

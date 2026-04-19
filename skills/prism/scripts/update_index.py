@@ -15,7 +15,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_WIKI_DIR = Path(__file__).parents[3] / "wiki"
+DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 
 TYPE_ICONS = {
     "concept":   "📐",

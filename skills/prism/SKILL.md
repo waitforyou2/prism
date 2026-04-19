@@ -8,47 +8,73 @@ description: >
   harvest skill and wanting to convert raw articles into structured knowledge.
 ---
 
-# prism — Prism Wiki 整理技能
+# prism — Prism Wiki 知识管理技能
 
-Read `wiki/raw/` unprocessed files, organize them into structured `wiki/pages/` following `wiki/CLAUDE.md`.
+Ingest harvested data into `wiki/raw/`, then organize into structured `wiki/pages/` following `wiki/CLAUDE.md`.
 
-## Dependencies
+This skill is the **sole owner** of the `wiki/` directory structure. It handles both:
+- **Ingestion**: `.cache/enriched.json` → `wiki/raw/` (from harvest output)
+- **Crystallization**: `wiki/raw/` → `wiki/pages/` (structured knowledge)
 
-```bash
-# No extra dependencies — uses Python standard library only
-python skills/prism/scripts/scan_raw.py  # should work immediately
+## Phase 0: Environment Setup (MUST DO FIRST)
+
+### 1. Locate this skill's installation directory
+
+Since you are reading this file right now, derive the skill root:
+
 ```
+SKILL_DIR = <directory containing this SKILL.md file>
+```
+
+**All script paths below use `$SKILL_DIR` as prefix.** Replace it with the actual absolute path.
+
+### 2. Confirm the user's working directory
+
+All wiki data is read/written relative to the **user's CWD**, not `$SKILL_DIR`.
 
 ## Core Workflow
 
-### Phase 1: Environment Bootstrapping & Target Identification
+### Phase 1: Target Identification & Bootstrapping
 
-Determine the target topic workspace from the user's request (e.g., if the user says "organize the claude wiki", the target topic is `claude/`). If no specific topic is mentioned, ask the user or default to `./`.
+Determine the target topic workspace from the user's request (e.g., "organize the claude wiki" → topic is `claude`). If no specific topic is mentioned, ask the user.
 
-Always check if `[topic]/wiki/CLAUDE.md` exists in the targeted workspace before starting.
+Always check if `[topic]/wiki/CLAUDE.md` exists before starting.
 
 **If `[topic]/wiki/CLAUDE.md` does NOT exist:**
-1. Determine that the knowledge base needs initialization.
-2. Create the raw and pages directories: `[topic]/wiki/raw/` and `[topic]/wiki/pages/`.
-3. Create `[topic]/wiki/CLAUDE.md` by copying the exact system instructions found in `skills/prism/references/default_claude_template.md`.
-4. Create a welcoming basic page `[topic]/wiki/pages/concepts/Prism Wiki.md` introducing the initialized knowledge base.
-5. Notify the user briefly about the initialization completion.
-6. **Immediately PROCEED to Phase 2** to process any pending items.
+1. Create the directory structure: `[topic]/wiki/raw/`, `[topic]/wiki/pages/`, `[topic]/wiki/signals/`.
+2. Create `[topic]/wiki/CLAUDE.md` by copying from `$SKILL_DIR/references/default_claude_template.md`.
+3. Create a welcoming page `[topic]/wiki/pages/concepts/Prism Wiki.md`.
+4. Notify the user, then **proceed to Phase 2**.
 
 **If `[topic]/wiki/CLAUDE.md` DOES exist:**
 Proceed directly to Phase 2.
 
-### Phase 2: Crystallization (Data Processing)
+### Phase 2: Ingestion (Harvest Data → wiki/raw/)
+
+Check if `[topic]/.cache/enriched.json` exists (output from the `harvest` skill).
+
+**If it exists and has not been ingested yet:**
+
+```bash
+python $SKILL_DIR/scripts/save_to_raw.py --keyword "[topic]" --in [topic]/.cache/enriched.json --wiki-dir [topic]/wiki
+```
+
+This routes each item to:
+- `wiki/raw/` — full-text articles (fetchStatus=ok, wordCount ≥ 100)
+- `wiki/signals/` — snippets, failed fetches, video references
+
+**If no `.cache/enriched.json` exists:**
+Skip to Phase 3 (process any existing unprocessed raw files).
+
+### Phase 3: Crystallization (wiki/raw/ → wiki/pages/)
 
 ### Step 1: Scan for unprocessed files
 
 ```bash
-python skills/prism/scripts/scan_raw.py --wiki-dir [topic]/wiki/
+python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 ```
 
 This outputs a prioritized Markdown list of all unprocessed raw files, sorted by importance → relevance.
-
-Read this output carefully to understand what's waiting to be organized.
 
 ### Step 2: Read each raw file
 
@@ -106,7 +132,7 @@ After processing each raw file, update its `.meta.json` sidecar:
 After all files are processed:
 
 ```bash
-python skills/prism/scripts/update_index.py --wiki-dir [topic]/wiki/
+python $SKILL_DIR/scripts/update_index.py --wiki-dir [topic]/wiki/
 ```
 
 This regenerates `[topic]/wiki/pages/_index.md` with all current pages.
@@ -114,12 +140,14 @@ This regenerates `[topic]/wiki/pages/_index.md` with all current pages.
 ## Reference Files
 
 - `[topic]/wiki/CLAUDE.md` — **PRIMARY REFERENCE**: page formats, operation rules, tags
-- `skills/prism/references/wiki-schema.md` — Extended page templates
-- `skills/prism/references/category-guide.md` — When to use each category
+- `$SKILL_DIR/references/default_claude_template.md` — Template for new knowledge bases
+- `$SKILL_DIR/references/wiki-schema.md` — Extended page templates
+- `$SKILL_DIR/references/category-guide.md` — When to use each category
 
 ## Script Reference
 
 | Script | Purpose |
 |--------|---------|
+| `save_to_raw.py` | Ingest enriched JSON into `wiki/raw/` and `wiki/signals/` |
 | `scan_raw.py` | List unprocessed files from `wiki/raw/_index.json`, sorted by priority |
 | `update_index.py` | Rebuild `wiki/pages/_index.md` from existing page files |

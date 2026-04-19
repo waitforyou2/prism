@@ -27,7 +27,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DEFAULT_WIKI_DIR = Path(__file__).parents[3] / "wiki"
+DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 MIN_WORD_COUNT        = 100      # Full-text threshold for wiki/raw/
 CONTENT_HASH_LEN     = 8        # Characters of content fingerprint in filename
 

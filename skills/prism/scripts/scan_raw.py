@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_WIKI_DIR = Path(__file__).parents[3] / "wiki"
+DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 
 IMPORTANCE_ORDER = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
 IMPORTANCE_ICONS = {

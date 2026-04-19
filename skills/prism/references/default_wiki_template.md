@@ -45,10 +45,10 @@ wiki/
 │       ├── {src}_{hash}.md         全文 + frontmatter
 │       └── {src}_{hash}.meta.json  元数据侧车
 ├── pages/                 编译后的 Wiki 页面
-│   ├── overview/          概览页（当前知识库的整体介绍、发展路线、入门指南）
+│   ├── overview/          概览页（可包含多个维度，如：整体介绍视角、技术架构视角、用户手册视角等）
 │   ├── concepts/          概念页（技术范式、方法论、抽象思想）
 │   ├── entities/          实体页（人物、工具、公司、产品）
-│   └── syntheses/         综合分析页（跨来源趋势判断）
+│   └── syntheses/         综合分析页（跨来源趋势判断、深度对比分析）
 └── signals/               低质量碎片
 ```
 
@@ -68,8 +68,9 @@ wiki/
    - 对于文档中提到的每个重要 **实体**：在 `pages/entities/` 中创建或更新对应页面。
    - 对于文档中提到的每个重要 **概念**：在 `pages/concepts/` 中创建或更新对应页面。
    - 对于文档的整体价值：如果文档是综述性或具有极高引导价值，更新 `pages/overview/` 中的相关页面。
-4. **强链接绑定**：
+4. **强链接与高密度引用**：
    - 在新创建的内容中，使用 `[[Page Title]]` 将相关的实体与概念互相链接。
+   - **充分利用 Data Pool**：不仅引用核心文档，还应主动搜索 `raw/` 中其他提及该知识点的文档。
    - **必须**在"关键来源"章节引用文档对应的本地 raw 路径，格式为 `[[raw/YYYYMMDD/filename.md]]`。
 5. **更新进度**：更新 `.meta.json` 中的 `compiled: true` 并记录日志。
 
@@ -82,19 +83,19 @@ wiki/
 
 ## 页面格式规范
 
-### Overview 页（`pages/overview/{Topic}.md`）
-*通常每个库只有一个核心概览，用于梳理该主题的现状。*
+### Overview 页（`pages/overview/{Topic}_{Perspective}.md`）
+*根据 Data Pool 的深度，可以从不同维度创建概览。例如：全景概览、技术深度概览、社区评价概览等。*
 
 ```markdown
 ---
 type: overview
-title: "{Topic} 概览"
+title: "{Topic} {Perspective} 概览"
 tags: [overview, main]
 created: YYYYMMDD
 updated: YYYYMMDD
 ---
 
-# {Topic} 概览
+# {Topic} {Perspective} 概览
 
 ## 简介
 [对该知识库主题的宏观定义]
@@ -103,11 +104,12 @@ updated: YYYYMMDD
 - **核心实体**: [[Entity A]], [[Entity B]]
 - **关键概念**: [[Concept A]], [[Concept B]]
 
-## 现状与发展
-[基于 raw 数据总结的当前状态]
+## 核心内容与多维总结
+[基于 raw 数据总结的当前状态、核心功能、技术亮点、或社区反馈。请保持高度的知识密度，尽可能整合所有已入库的相关 raw 资料。]
 
 ## 关键来源
 - [[raw/YYYYMMDD/src_hash.md]] — {描述该文档对概览的贡献}
+- [[raw/YYYYMMDD/other_src.md]] — {补充信息说明}
 ```
 
 ### Concept 页（`pages/concepts/{Topic}.md`）
@@ -163,6 +165,7 @@ updated: YYYYMMDD
 ## 写作规则（铁律）
 
 1. **禁止外部链接**：在“关键来源”章节，**严禁引用 http/https URL**。必须引用本地路径 `[[raw/YYYYMMDD/source_file.md]]`。
-2. **主动提取**：如果 raw 文档提到了一个新的工具，即使文档主题不是它，也要去 `entities/` 下看一眼，没有就创建，有就追加内容。
-3. **日期格式**：所有 frontmatter 和路径中的日期统一使用 `YYYYMMDD` 格式。
-4. **双向链接**：创建页面时必须考虑“它属于谁”和“谁属于它”，通过双链构建网络。
+2. **充分收割 (Crystallization)**：如果 raw 文档提到了一个新的工具或观点，即使不是当前文档的主角，也应在对应页面追加信息，确保 raw 文档的价值被榨干。
+3. **高密度多维概览**：Overview 页面不应只是简介，应作为该库的“最强综述”。当知识面很广时，应拆分为不同视角的多个 Overview（如 `openclaw_architecture` vs `openclaw_user_feedback`）。
+4. **日期格式**：所有 frontmatter 和路径中的日期统一使用 `YYYYMMDD` 格式。
+5. **双向链接**：创建页面时必须考虑“它属于谁”和“谁属于它”，通过双链构建网络。

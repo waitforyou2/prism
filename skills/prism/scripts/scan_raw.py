@@ -2,9 +2,10 @@
 """
 scan_raw.py — Scan wiki/raw/ for unprocessed files and print a prioritized list.
 
-Reads wiki/raw/_index.json, filters for unprocessed items,
-sorts by importance + relevance, and outputs a formatted Markdown
-report for the AI to read before deciding how to organize pages.
+Reads wiki/raw/**/*.meta.json as the source of truth for compiled state,
+falls back to wiki/raw/_index.json only when no meta files exist, then
+sorts by importance + relevance and outputs a formatted Markdown report
+for the AI to read before deciding how to organize pages.
 
 Usage:
   python scan_raw.py
@@ -41,6 +42,20 @@ def load_index(wiki_dir: Path) -> list:
         return []
 
 
+def load_meta_files(wiki_dir: Path) -> list:
+    raw_dir = wiki_dir / "raw"
+    if not raw_dir.exists():
+        return []
+
+    records = []
+    for meta_path in sorted(raw_dir.rglob("*.meta.json")):
+        try:
+            records.append(json.loads(meta_path.read_text(encoding='utf-8')))
+        except Exception as e:
+            print(f"⚠️ Failed to read meta file {meta_path}: {e}", file=sys.stderr)
+    return records
+
+
 def format_words(n: int) -> str:
     if n == 0:
         return "snippet only"
@@ -57,7 +72,9 @@ def main():
     args = parser.parse_args()
 
     wiki_dir = Path(args.wiki_dir)
-    files = load_index(wiki_dir)
+    files = load_meta_files(wiki_dir)
+    if not files:
+        files = load_index(wiki_dir)
 
     # Filter
     unprocessed = [f for f in files if not f.get("compiled", False)]

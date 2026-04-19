@@ -147,12 +147,13 @@ def existing_urls(index: dict) -> set:
 # ── Core logic ────────────────────────────────────────────────────────────────
 
 def save_item(item: dict, wiki_dir: Path, today: str, keyword_override: str | None,
+              min_words: int,
               existing_raw: set, existing_sig: set,
               index_raw: dict, index_sig: dict,
               dry_run: bool) -> str:
     """
     Route a single item to the appropriate layer:
-      - wiki/raw/     → fetchStatus='ok' AND wordCount >= MIN_WORD_COUNT
+      - wiki/raw/     → fetchStatus='ok' AND wordCount >= min_words
       - wiki/signals/ → everything else (snippets, bilibili, failed, low-content)
 
     Returns: 'saved_raw', 'saved_signal', 'skipped_duplicate', 'skipped_empty'
@@ -176,7 +177,7 @@ def save_item(item: dict, wiki_dir: Path, today: str, keyword_override: str | No
     # Decide destination layer
     is_full_text = (
         fetch_status == 'ok'
-        and word_count >= MIN_WORD_COUNT
+        and word_count >= min_words
         and source not in SIGNAL_SOURCES
     )
     layer      = 'raw' if is_full_text else 'signals'
@@ -271,7 +272,7 @@ def main():
     counts: dict[str, int] = {}
     for item in items:
         result = save_item(
-            item, wiki_dir, today, args.keyword,
+            item, wiki_dir, today, args.keyword, args.min_words,
             existing_raw, existing_sig,
             index_raw, index_sig,
             args.dry_run

@@ -21,6 +21,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# ── Globals ───────────────────────────────────────────────────────────────────
+
+# Priority list for constitution files
+CONSTITUTION_NAMES = ["WIKI.md", "CLAUDE.md", "AGENTS.md", "CONTEXT.md"]
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -146,15 +151,32 @@ def build_bm25_corpus(kb_id: str, description: str, tags: list[str],
 
 def discover(workspace: Path, verbose: bool = False) -> list[dict]:
     """
-    Scan workspace for knowledge bases (directories containing wiki/WIKI.md).
-
-    Returns a list of KB metadata dicts, each including a bm25_corpus field.
+    Scan workspace for knowledge bases.
+    A KB is a directory containing a 'wiki/' subdirectory with a constitution file.
+    
+    Returns a list of KB metadata dicts.
     """
     kbs: list[dict] = []
 
-    for wiki_md_path in sorted(workspace.rglob("wiki/WIKI.md")):
-        kb_dir = wiki_md_path.parent.parent   # e.g. ~/knowledge/claude
-        kb_id_fallback = kb_dir.name          # "claude"
+    # Find all 'wiki' directories
+    for wiki_dir in sorted(workspace.rglob("wiki")):
+        if not wiki_dir.is_dir():
+            continue
+
+        # Look for the best constitution match
+        found_const_path: Path | None = None
+        for name in CONSTITUTION_NAMES:
+            p = wiki_dir / name
+            if p.is_file():
+                found_const_path = p
+                break
+
+        if not found_const_path:
+            continue
+
+        wiki_md_path = found_const_path
+        kb_dir = wiki_dir.parent
+        kb_id_fallback = kb_dir.name
 
         if verbose:
             print(f"  Found KB: {kb_dir}", file=sys.stderr)
@@ -200,15 +222,16 @@ def discover(workspace: Path, verbose: bool = False) -> list[dict]:
         corpus = build_bm25_corpus(kb_id, description, tags, topics, page_titles)
 
         kbs.append({
-            "id":           kb_id,
-            "path":         rel_path,
-            "abs_path":     str(wiki_md_path.parent).replace("\\", "/"),
-            "description":  description,
-            "tags":         tags,
-            "page_count":   page_count,
-            "topics":       topics,
-            "last_updated": last_updated,
-            "bm25_corpus":  corpus,
+            "id":                kb_id,
+            "path":              rel_path,
+            "abs_path":          str(wiki_md_path.parent).replace("\\", "/"),
+            "constitution_name": wiki_md_path.name,
+            "description":       description,
+            "tags":              tags,
+            "page_count":        page_count,
+            "topics":            topics,
+            "last_updated":      last_updated,
+            "bm25_corpus":       corpus,
         })
 
         if verbose:

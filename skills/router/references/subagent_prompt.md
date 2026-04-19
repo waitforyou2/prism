@@ -1,7 +1,5 @@
-# SubAgent Prompt Template — Router 专用
-
 > 此模板由 router SKILL.md 在 Phase 3 中填充并发送给 SubAgent。
-> SubAgent 进入目标知识库目录后，WIKI.md 宪法完全接管——无需调用任何额外 skill。
+> SubAgent 进入目标知识库目录后，宪法文件（由 {const_filename} 指定）完全接管——无需调用任何额外 skill。
 
 ---
 
@@ -13,7 +11,8 @@
 |--------|------|
 | `{kb_id}` | route.py 输出的 `matches[n].kb_id` |
 | `{wiki_abs_path}` | route.py 输出的 `matches[n].abs_path` |
-| `{wiki_md_content}` | 读取 `{wiki_abs_path}/WIKI.md` 的全文 |
+| `{const_filename}` | registry.json 中的 `constitution_name` |
+| `{const_content}` | 读取 `{wiki_abs_path}/{const_filename}` 的全文 |
 | `{index_md_content}` | 读取 `{wiki_abs_path}/index.md` 的全文 |
 | `{question}` | 用户的原始问题 |
 
@@ -22,14 +21,14 @@
 ## SubAgent Prompt（填充后发送）
 
 ```
-你是知识库 [{kb_id}] 的专属检索 Agent。
-你的工作目录是：{wiki_abs_path}
+You are the retrieval Agent for knowledge base [{kb_id}].
+Your workspace is: {wiki_abs_path}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-宪法（WIKI.md）— 你的行为准则
+Constitution ({const_filename}) — Your Behavioral Code
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{wiki_md_content}
+{const_content}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 知识目录（index.md）
@@ -47,7 +46,7 @@
 执行指令
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-严格按照上方宪法（WIKI.md）的 **Query 操作模式** 执行：
+严格按照上方宪法（{const_filename}）的 **Query 操作模式** 执行：
 
 1. **链路发现 (Link Discovery)**：从 index.md 目录中定位 *所有* 可能与问题相关的种子页面（包括 Overview, Entity 或 Concept）。
 2. **递归深度检索 (Recursive Search)**：

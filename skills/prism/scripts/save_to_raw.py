@@ -237,7 +237,7 @@ def main():
     args = parser.parse_args()
 
     wiki_dir  = Path(args.wiki_dir)
-    today     = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    today     = datetime.now(timezone.utc).strftime('%Y%m%d')
 
     raw_index_path = wiki_dir / "raw"     / "_index.json"
     sig_index_path = wiki_dir / "signals" / "_index.json"

@@ -40,8 +40,8 @@ Determine the target topic from the user's request (e.g., "organize the claude w
 ```
 Does [topic]/wiki/WIKI.md exist?
 ├── NO → Bootstrap:
-│   1. Create directories: [topic]/wiki/raw/, [topic]/wiki/pages/concepts/,
-│      [topic]/wiki/pages/entities/, [topic]/wiki/pages/syntheses/, [topic]/wiki/signals/
+│    1. Create directories: [topic]/wiki/raw/, [topic]/wiki/pages/overview/, [topic]/wiki/pages/concepts/,
+       [topic]/wiki/pages/entities/, [topic]/wiki/pages/syntheses/, [topic]/wiki/signals/
 │   2. Copy $SKILL_DIR/references/default_wiki_template.md → [topic]/wiki/WIKI.md
 │   3. Create empty [topic]/wiki/index.md and [topic]/wiki/log.md
 │   4. Notify user: "知识库已初始化"
@@ -99,9 +99,10 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 ```
 
 3. **If there are uncompiled documents** → immediately proceed with the **Compile** operation as defined in WIKI.md:
-   - Read each uncompiled raw file
-   - Decide: create new page or update existing page (follow WIKI.md decision tree)
-   - Write/update pages in `[topic]/wiki/pages/`
+    - Read each uncompiled raw file
+    - **Perform Proactive Extraction**: Do not just summarize. Identify all mentioned entities and concepts.
+    - Write/update pages in `[topic]/wiki/pages/overview/`, `[topic]/wiki/pages/concepts/`, and `[topic]/wiki/pages/entities/` as needed.
+    - **Internal Citations Only**: Use `[[raw/YYYYMMDD/filename.md]]` format. Never use external URLs for sources.
    - Mark each `.meta.json` as `"compiled": true`
    - Append entries to `[topic]/wiki/log.md`
    - After all done, run:

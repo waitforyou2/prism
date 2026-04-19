@@ -22,15 +22,19 @@ from pathlib import Path
 DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 
 TYPE_ICONS = {
-    "concept":   "📐",
-    "entity":    "👤",
-    "synthesis": "🔬",
+    "concept": "🧠",
+    "entity": "👤",
+    "synthesis": "🧪",
+    "overview": "🗺️",
+    "other": "📄"
 }
 
 TYPE_LABELS = {
-    "concept":   "Concepts",
-    "entity":    "Entities",
-    "synthesis": "Syntheses",
+    "concept": "概念 (Concepts)",
+    "entity": "实体 (Entities)",
+    "synthesis": "综合分析 (Syntheses)",
+    "overview": "概览 (Overviews)",
+    "other": "其他 (Misc)"
 }
 
 ENTITY_TYPE_ICONS = {
@@ -83,7 +87,7 @@ def get_first_paragraph(text: str) -> str:
 def scan_pages(wiki_dir: Path) -> dict[str, list]:
     """Scan wiki/pages/ and group pages by type."""
     pages_dir = wiki_dir / "pages"
-    groups: dict[str, list] = {"concept": [], "entity": [], "synthesis": [], "other": []}
+    groups: dict[str, list] = {"overview": [], "concept": [], "entity": [], "synthesis": [], "other": []}
 
     for md_file in sorted(pages_dir.rglob("*.md")):
         if md_file.name == "_index.md":
@@ -179,7 +183,7 @@ def build_index(groups: dict, wiki_dir: Path, kb_id: str = "") -> str:
         "",
     ]
 
-    for type_key in ["concept", "entity", "synthesis", "other"]:
+    for type_key in ["overview", "concept", "entity", "synthesis", "other"]:
         items = groups.get(type_key, [])
         if not items:
             continue
@@ -240,7 +244,7 @@ def main():
 
     print(f"✅ Updated {index_path}")
     print(f"   {total} pages: "
-          + ", ".join(f"{len(groups[k])} {k}s" for k in ["concept", "entity", "synthesis"] if groups[k]))
+          + ", ".join(f"{len(groups[k])} {k}s" for k in ["overview", "concept", "entity", "synthesis"] if groups[k]))
     if kb_id:
         print(f"   kb_id: {kb_id}")
 

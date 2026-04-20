@@ -1,275 +1,274 @@
 #!/usr/bin/env python3
-"""
-discover.py — Scan a workspace directory and discover all Prism knowledge bases.
-
-A knowledge base is any directory containing wiki/WIKI.md.
-Extracts metadata from WIKI.md frontmatter and wiki/index.md frontmatter,
-then writes a registry.json for use by the router skill.
-
-v2.1: Now includes `bm25_corpus` field — a pre-built text blob for BM25 scoring.
-
-Usage:
-  python discover.py --workspace ~/knowledge
-  python discover.py --workspace ~/knowledge --out .prism/registry.json
-  python discover.py --workspace . --out .prism/registry.json --verbose
-"""
+"""Discover Prism knowledge bases within a workspace."""
 
 import argparse
 import json
+import logging
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+LOGGER = logging.getLogger(__name__)
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def configure_logging() -> None:
+    """Configure stderr logging for command-line execution."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Discover Prism knowledge bases in a workspace and build registry.json",
+    )
+    parser.add_argument(
+        "--workspace",
+        "-w",
+        default=".",
+        help="Root directory to scan for knowledge bases",
+    )
+    parser.add_argument(
+        "--out",
+        "-o",
+        default=None,
+        help="Output path for registry.json. If omitted, prints to stdout.",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print discovery progress to stderr",
+    )
+    return parser.parse_args()
+
 
 def parse_frontmatter(text: str) -> dict:
-    """Extract YAML frontmatter from a Markdown file. Returns {} if none."""
-    pattern = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
+    """Extract YAML frontmatter from a Markdown file."""
+    pattern = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
     match = pattern.match(text)
     if not match:
         return {}
-
-    fm: dict = {}
+    frontmatter: dict[str, str] = {}
     for line in match.group(1).splitlines():
-        if ':' not in line:
+        if ":" not in line:
             continue
-        key, _, value = line.partition(':')
-        key   = key.strip()
-        value = value.strip().strip('"').strip("'")
-        fm[key] = value
-    return fm
+        key, _, value = line.partition(":")
+        frontmatter[key.strip()] = value.strip().strip('"').strip("'")
+    return frontmatter
 
 
-def parse_tags(raw: str) -> list[str]:
-    """Parse a tags string like '[tag1, tag2]' or 'tag1, tag2' into a list."""
-    if not raw:
+def parse_tags(raw_tags: str) -> list[str]:
+    """Parse a tags string into a list."""
+    if not raw_tags:
         return []
-    cleaned = raw.strip().strip('[]')
-    return [t.strip().strip("'\"") for t in cleaned.split(',') if t.strip()]
+    cleaned_tags = raw_tags.strip().strip("[]")
+    return [
+        tag.strip().strip("'\"")
+        for tag in cleaned_tags.split(",")
+        if tag.strip()
+    ]
 
 
 def extract_index_meta(index_path: Path) -> tuple[dict, list[str]]:
-    """
-    Extract frontmatter and topic list from wiki/index.md.
-
-    Returns:
-        fm     — frontmatter dict (page_count, updated, tags, kb_id)
-        topics — list of topic titles from the "覆盖主题" line
-    """
+    """Extract frontmatter and topic list from wiki/index.md."""
     if not index_path.exists():
         return {}, []
-
     try:
-        text = index_path.read_text(encoding='utf-8')
+        text = index_path.read_text(encoding="utf-8-sig")
     except Exception:
         return {}, []
+    frontmatter = parse_frontmatter(text)
+    topics = extract_topics(text)
+    return frontmatter, topics
 
-    fm = parse_frontmatter(text)
 
-    # Extract "覆盖主题: Topic A, Topic B, ..." line from body
-    topics: list[str] = []
+def extract_topics(text: str) -> list[str]:
+    """Extract topic names from index body text."""
     for line in text.splitlines():
-        if '覆盖主题' in line or 'topics' in line.lower():
-            # Strip markdown bold markers and prefix
-            clean = re.sub(r'\*\*[^*]+\*\*:\s*', '', line).strip()
-            # Remove trailing "... 等 N 个主题"
-            clean = re.sub(r'\s*\.\.\.\s*等\s*\d+\s*个主题', '', clean)
-            parts = [t.strip() for t in clean.split(',') if t.strip()]
-            topics = parts
-            break
-
-    return fm, topics
+        if "topics" not in line.lower() and "覆盖主题" not in line:
+            continue
+        clean_line = re.sub(r"\*\*[^*]+\*\*:\s*", "", line).strip()
+        clean_line = re.sub(r"\s*\.\.\.\s*total\s*\d+\s*topics", "", clean_line)
+        return [topic.strip() for topic in clean_line.split(",") if topic.strip()]
+    return []
 
 
 def extract_page_titles(wiki_dir: Path) -> list[str]:
-    """Scan wiki/pages/ and extract all page titles from frontmatter."""
+    """Scan wiki/pages/ and extract page titles plus aliases."""
     pages_dir = wiki_dir / "pages"
     if not pages_dir.exists():
         return []
-
-    titles: list[str] = []
-    for md_file in sorted(pages_dir.rglob("*.md")):
-        if md_file.name.startswith("_"):
+    page_titles: list[str] = []
+    for markdown_file in sorted(pages_dir.rglob("*.md")):
+        if markdown_file.name.startswith("_"):
             continue
         try:
-            text = md_file.read_text(encoding='utf-8')
+            text = markdown_file.read_text(encoding="utf-8-sig")
         except Exception:
             continue
-        fm = parse_frontmatter(text)
-        title = fm.get("title") or md_file.stem
-        titles.append(title)
-        # Also grab aliases if present
-        aliases_raw = fm.get("aliases", "")
-        if aliases_raw:
-            for a in aliases_raw.strip("[]").split(","):
-                a = a.strip().strip("'\"")
-                if a:
-                    titles.append(a)
-    return titles
+        frontmatter = parse_frontmatter(text)
+        page_titles.append(frontmatter.get("title") or markdown_file.stem)
+        page_titles.extend(extract_aliases(frontmatter.get("aliases", "")))
+    return page_titles
 
 
-def build_bm25_corpus(kb_id: str, description: str, tags: list[str],
-                       topics: list[str], page_titles: list[str]) -> str:
-    """
-    Build a flat text blob for BM25 indexing.
+def extract_aliases(raw_aliases: str) -> list[str]:
+    """Parse aliases from frontmatter."""
+    aliases: list[str] = []
+    if not raw_aliases:
+        return aliases
+    for alias in raw_aliases.strip("[]").split(","):
+        clean_alias = alias.strip().strip("'\"")
+        if clean_alias:
+            aliases.append(clean_alias)
+    return aliases
 
-    Combines all discoverable metadata into a single string.
-    Higher-value signals (kb_id, page titles) are repeated for weight boosting.
-    """
-    parts: list[str] = []
 
-    # kb_id repeated 3x for strong anchor signal
+def build_bm25_corpus(
+    kb_id: str,
+    description: str,
+    tags: list[str],
+    topics: list[str],
+    page_titles: list[str],
+) -> str:
+    """Build a weighted text blob for BM25 indexing."""
+    corpus_parts: list[str] = []
     if kb_id:
-        parts.extend([kb_id] * 3)
-
-    # Description (as-is)
+        corpus_parts.extend([kb_id] * 3)
     if description:
-        parts.append(description)
-
-    # Tags (each repeated 2x for moderate weight)
+        corpus_parts.append(description)
     for tag in tags:
-        parts.extend([tag] * 2)
+        corpus_parts.extend([tag] * 2)
+    corpus_parts.extend(topics)
+    for page_title in page_titles:
+        corpus_parts.extend([page_title] * 2)
+    return " ".join(corpus_parts)
 
-    # Topics from index.md
-    parts.extend(topics)
-
-    # Page titles — the highest-quality knowledge indicators (repeated 2x)
-    for title in page_titles:
-        parts.extend([title] * 2)
-
-    return " ".join(parts)
-
-
-# ── Core ──────────────────────────────────────────────────────────────────────
 
 def discover(workspace: Path, verbose: bool = False) -> list[dict]:
-    """
-    Scan workspace for knowledge bases (directories containing wiki/WIKI.md).
-
-    Returns a list of KB metadata dicts, each including a bm25_corpus field.
-    """
-    kbs: list[dict] = []
-
-    for wiki_md_path in sorted(workspace.rglob("wiki/WIKI.md")):
-        kb_dir = wiki_md_path.parent.parent   # e.g. ~/knowledge/claude
-        kb_id_fallback = kb_dir.name          # "claude"
-
-        if verbose:
-            print(f"  Found KB: {kb_dir}", file=sys.stderr)
-
-        # 1. Read WIKI.md frontmatter
-        try:
-            wiki_text = wiki_md_path.read_text(encoding='utf-8')
-        except Exception as e:
-            print(f"  ⚠️  Cannot read {wiki_md_path}: {e}", file=sys.stderr)
-            continue
-
-        wiki_fm = parse_frontmatter(wiki_text)
-
-        # 2. Read index.md
-        index_path = wiki_md_path.parent / "index.md"
-        index_fm, topics = extract_index_meta(index_path)
-
-        # 3. Extract all page titles for BM25 corpus
-        page_titles = extract_page_titles(wiki_md_path.parent)
-
-        # 4. Merge metadata
-        kb_id       = wiki_fm.get("kb_id") or index_fm.get("kb_id") or kb_id_fallback
-        description = wiki_fm.get("description", "")
-        tags_raw    = wiki_fm.get("tags") or index_fm.get("tags") or ""
-        tags        = parse_tags(tags_raw)
-
-        if not tags and kb_id:
-            tags = [kb_id]
-
-        try:
-            page_count = int(index_fm.get("page_count", 0))
-        except (ValueError, TypeError):
-            page_count = 0
-
-        last_updated = index_fm.get("updated") or wiki_fm.get("created", "")
-
-        try:
-            rel_path = str(wiki_md_path.parent.relative_to(workspace)).replace("\\", "/")
-        except ValueError:
-            rel_path = str(wiki_md_path.parent).replace("\\", "/")
-
-        # 5. Build BM25 corpus
-        corpus = build_bm25_corpus(kb_id, description, tags, topics, page_titles)
-
-        kbs.append({
-            "id":           kb_id,
-            "path":         rel_path,
-            "abs_path":     str(wiki_md_path.parent).replace("\\", "/"),
-            "description":  description,
-            "tags":         tags,
-            "page_count":   page_count,
-            "topics":       topics,
-            "last_updated": last_updated,
-            "bm25_corpus":  corpus,
-        })
-
-        if verbose:
-            print(f"    corpus: {corpus[:120]}...", file=sys.stderr)
-
-    return kbs
+    """Scan the workspace for knowledge bases."""
+    knowledge_bases: list[dict] = []
+    for wiki_path in sorted(workspace.rglob("wiki/WIKI.md")):
+        knowledge_base = build_knowledge_base_record(workspace, wiki_path, verbose)
+        if knowledge_base:
+            knowledge_bases.append(knowledge_base)
+    return knowledge_bases
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='Discover Prism knowledge bases in a workspace and build registry.json'
+def build_knowledge_base_record(
+    workspace: Path,
+    wiki_path: Path,
+    verbose: bool,
+) -> dict | None:
+    """Build a single knowledge base record from wiki paths."""
+    kb_dir = wiki_path.parent.parent
+    if verbose:
+        LOGGER.info("Found KB: %s", kb_dir)
+    try:
+        wiki_text = wiki_path.read_text(encoding="utf-8-sig")
+    except Exception as exc:
+        LOGGER.warning("Cannot read %s: %s", wiki_path, exc)
+        return None
+    wiki_frontmatter = parse_frontmatter(wiki_text)
+    index_frontmatter, topics = extract_index_meta(wiki_path.parent / "index.md")
+    page_titles = extract_page_titles(wiki_path.parent)
+    record = merge_metadata(
+        workspace,
+        kb_dir,
+        wiki_frontmatter,
+        index_frontmatter,
+        topics,
+        page_titles,
     )
-    parser.add_argument(
-        '--workspace', '-w',
-        default='.',
-        help='Root directory to scan for knowledge bases (default: current directory)'
+    if verbose:
+        LOGGER.info("corpus: %s...", record["bm25_corpus"][:120])
+    return record
+
+
+def merge_metadata(
+    workspace: Path,
+    kb_dir: Path,
+    wiki_frontmatter: dict,
+    index_frontmatter: dict,
+    topics: list[str],
+    page_titles: list[str],
+) -> dict:
+    """Merge wiki and index metadata into one record."""
+    kb_id = (
+        wiki_frontmatter.get("kb_id")
+        or index_frontmatter.get("kb_id")
+        or kb_dir.name
     )
-    parser.add_argument(
-        '--out', '-o',
-        default=None,
-        help='Output path for registry.json. If omitted, prints to stdout.'
-    )
-    parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Print discovery progress to stderr'
-    )
-    args = parser.parse_args()
-
-    workspace = Path(args.workspace).resolve()
-
-    if not workspace.exists():
-        print(f"❌ Workspace not found: {workspace}", file=sys.stderr)
-        sys.exit(1)
-
-    if args.verbose:
-        print(f"🔍 Scanning workspace: {workspace}", file=sys.stderr)
-
-    kbs = discover(workspace, verbose=args.verbose)
-
-    registry = {
-        "discoveredAt":   datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "workspace":      str(workspace).replace("\\", "/"),
-        "knowledgeBases": kbs,
+    description = wiki_frontmatter.get("description", "")
+    tags = parse_tags(wiki_frontmatter.get("tags") or index_frontmatter.get("tags") or "")
+    if not tags and kb_id:
+        tags = [kb_id]
+    try:
+        page_count = int(index_frontmatter.get("page_count", 0))
+    except (ValueError, TypeError):
+        page_count = 0
+    try:
+        relative_path = str((kb_dir / "wiki").relative_to(workspace)).replace("\\", "/")
+    except ValueError:
+        relative_path = str(kb_dir / "wiki").replace("\\", "/")
+    return {
+        "id": kb_id,
+        "path": relative_path,
+        "abs_path": str(kb_dir / "wiki").replace("\\", "/"),
+        "description": description,
+        "tags": tags,
+        "page_count": page_count,
+        "topics": topics,
+        "last_updated": index_frontmatter.get("updated") or wiki_frontmatter.get("created", ""),
+        "bm25_corpus": build_bm25_corpus(kb_id, description, tags, topics, page_titles),
     }
 
-    output = json.dumps(registry, ensure_ascii=False, indent=2)
 
-    if args.out:
-        out_path = Path(args.out)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(output, encoding='utf-8')
-        print(f"✅ Registry written to {out_path}", file=sys.stderr)
-        print(f"   Found {len(kbs)} knowledge base(s):", file=sys.stderr)
-        for kb in kbs:
-            print(f"   - [{kb['id']}] {kb['path']} ({kb['page_count']} pages)", file=sys.stderr)
-    else:
-        print(output)
+def write_registry(
+    knowledge_bases: list[dict],
+    workspace: Path,
+    output_path: str | None,
+) -> None:
+    """Write the registry to stdout or a file."""
+    registry = {
+        "discoveredAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "workspace": str(workspace).replace("\\", "/"),
+        "knowledgeBases": knowledge_bases,
+    }
+    rendered_registry = json.dumps(registry, ensure_ascii=False, indent=2)
+    if output_path:
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(rendered_registry, encoding="utf-8")
+        LOGGER.info("Registry written to %s", destination)
+        LOGGER.info("Found %s knowledge base(s)", len(knowledge_bases))
+        for knowledge_base in knowledge_bases:
+            LOGGER.info(
+                "- [%s] %s (%s pages)",
+                knowledge_base["id"],
+                knowledge_base["path"],
+                knowledge_base["page_count"],
+            )
+        return
+    sys.stdout.write(rendered_registry)
+    sys.stdout.write("\n")
+
+
+def main() -> int:
+    """Run the discovery command."""
+    configure_logging()
+    args = parse_args()
+    workspace = Path(args.workspace).resolve()
+    if not workspace.exists():
+        LOGGER.error("Workspace not found: %s", workspace)
+        return 1
+    if args.verbose:
+        LOGGER.info("Scanning workspace: %s", workspace)
+    knowledge_bases = discover(workspace, verbose=args.verbose)
+    write_registry(knowledge_bases, workspace, args.out)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

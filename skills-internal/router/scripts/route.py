@@ -1,322 +1,326 @@
 #!/usr/bin/env python3
-"""
-route.py — Route a user question to the most relevant knowledge base(s).
-
-v2.1: BM25Okapi scoring engine (inlined, zero pip dependency).
-Expects Agent-expanded query strings with synonyms and English terms.
-
-Tokenization strategy:
-  - English: lowercase word splitting
-  - Chinese: character bigrams (2-grams) for meaningful IDF discrimination
-  - Mixed: both strategies applied, results merged
-
-Usage:
-  python route.py --query "claude code AI编程 agentic coding anthropic" --registry .prism/registry.json
-  python route.py -q "codex openai code generation 代码生成" -r .prism/registry.json --out .prism/route_result.json
-  python route.py -q "codex claude 对比 comparison" -r .prism/registry.json --verbose
-"""
+"""Route a user question to the most relevant knowledge base(s)."""
 
 import argparse
 import json
+import logging
 import math
 import re
 import sys
 from pathlib import Path
 
+LOGGER = logging.getLogger(__name__)
 
-# ── Tokenizer ─────────────────────────────────────────────────────────────────
+ENGLISH_WORD_RE = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
+SCORE_THRESHOLD = 1.0
 
-# CJK Unicode ranges (Chinese, Japanese, Korean)
-CJK_RE = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]')
-ENGLISH_WORD_RE = re.compile(r'[a-z0-9]+(?:[-_][a-z0-9]+)*')
+
+def configure_logging() -> None:
+    """Configure stderr logging for command-line execution."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Route an expanded query to matching knowledge base(s) via BM25",
+    )
+    parser.add_argument("--query", "-q", required=True, help="Expanded query string")
+    parser.add_argument(
+        "--registry",
+        "-r",
+        default=".prism/registry.json",
+        help="Path to registry.json",
+    )
+    parser.add_argument(
+        "--out",
+        "-o",
+        default=None,
+        help="Output path for route_result.json",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print scoring details to stderr",
+    )
+    return parser.parse_args()
 
 
 def tokenize(text: str) -> list[str]:
-    """
-    Hybrid tokenizer: English words + Chinese character bigrams.
-
-    English: "Claude Code" → ["claude", "code"]
-    Chinese: "代码生成" → ["代码", "码生", "生成"]
-    Mixed:   "Claude代码" → ["claude", "代码"]
-
-    Bigrams give dramatically better IDF discrimination than single chars.
-    A single character like "代" is ubiquitous; "代码" is far more specific.
-    """
-    text_lower = text.lower()
-    tokens: list[str] = []
-
-    # Extract English tokens
-    tokens.extend(ENGLISH_WORD_RE.findall(text_lower))
-
-    # Extract Chinese characters, then build bigrams
-    # Process each contiguous CJK run separately
-    cjk_runs = re.findall(r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+', text_lower)
+    """Tokenize text into English words and Chinese bigrams."""
+    lowered_text = text.lower()
+    tokens = ENGLISH_WORD_RE.findall(lowered_text)
+    cjk_runs = re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+", lowered_text)
     for run in cjk_runs:
-        if len(run) == 1:
-            tokens.append(run)  # single char — no bigram possible
-        else:
-            for i in range(len(run) - 1):
-                tokens.append(run[i:i+2])
-
+        tokens.extend(build_cjk_tokens(run))
     return tokens
 
 
-# ── BM25Okapi (inlined — no external dependency) ─────────────────────────────
+def build_cjk_tokens(run: str) -> list[str]:
+    """Build CJK bigram tokens from a contiguous CJK run."""
+    if len(run) == 1:
+        return [run]
+    return [run[index:index + 2] for index in range(len(run) - 1)]
+
 
 class BM25:
-    """
-    BM25Okapi implementation. ~30 lines, zero dependency.
+    """Minimal BM25Okapi implementation."""
 
-    Parameters:
-        k1 = 1.5  — term frequency saturation
-        b  = 0.75 — document length normalization
-    """
-
-    def __init__(self, corpus: list[list[str]], k1: float = 1.5, b: float = 0.75):
+    def __init__(
+        self,
+        corpus: list[list[str]],
+        k1: float = 1.5,
+        b: float = 0.75,
+    ) -> None:
         self.k1 = k1
         self.b = b
         self.corpus = corpus
         self.n_docs = len(corpus)
-        self.doc_lens = [len(doc) for doc in corpus]
+        self.doc_lens = [len(document) for document in corpus]
         self.avgdl = sum(self.doc_lens) / self.n_docs if self.n_docs > 0 else 1.0
-
-        # Build document frequency table
         self.df: dict[str, int] = {}
-        for doc in corpus:
-            seen: set[str] = set()
-            for token in doc:
-                if token not in seen:
+        for document in corpus:
+            seen_terms: set[str] = set()
+            for token in document:
+                if token not in seen_terms:
                     self.df[token] = self.df.get(token, 0) + 1
-                    seen.add(token)
+                    seen_terms.add(token)
 
     def _idf(self, term: str) -> float:
-        """Robertson-Sparck Jones IDF with floor at 0."""
-        df = self.df.get(term, 0)
-        return max(0.0, math.log((self.n_docs - df + 0.5) / (df + 0.5) + 1.0))
+        document_frequency = self.df.get(term, 0)
+        return max(
+            0.0,
+            math.log((self.n_docs - document_frequency + 0.5) / (document_frequency + 0.5) + 1.0),
+        )
 
-    def score(self, query_tokens: list[str], doc_idx: int) -> float:
+    def score(self, query_tokens: list[str], document_index: int) -> float:
         """Score a single document against the query."""
-        doc = self.corpus[doc_idx]
-        dl = self.doc_lens[doc_idx]
-
-        # Build term frequency for this document
-        tf: dict[str, int] = {}
-        for token in doc:
-            tf[token] = tf.get(token, 0) + 1
-
+        document = self.corpus[document_index]
+        document_length = self.doc_lens[document_index]
+        term_frequencies: dict[str, int] = {}
+        for token in document:
+            term_frequencies[token] = term_frequencies.get(token, 0) + 1
         score = 0.0
         for term in query_tokens:
-            if term not in tf:
+            if term not in term_frequencies:
                 continue
-            freq = tf[term]
+            frequency = term_frequencies[term]
             idf = self._idf(term)
-            numerator = freq * (self.k1 + 1)
-            denominator = freq + self.k1 * (1 - self.b + self.b * dl / self.avgdl)
+            numerator = frequency * (self.k1 + 1)
+            denominator = frequency + self.k1 * (
+                1 - self.b + self.b * document_length / self.avgdl
+            )
             score += idf * numerator / denominator
-
         return score
 
     def rank(self, query_tokens: list[str]) -> list[tuple[int, float]]:
-        """Rank all documents. Returns list of (doc_idx, score) sorted desc."""
-        scores = [(i, self.score(query_tokens, i)) for i in range(self.n_docs)]
-        scores.sort(key=lambda x: -x[1])
-        return scores
+        """Rank all documents for the query."""
+        scored_documents = [
+            (index, self.score(query_tokens, index))
+            for index in range(self.n_docs)
+        ]
+        scored_documents.sort(key=lambda entry: -entry[1])
+        return scored_documents
 
 
-# ── Fast-path: ID exact match ─────────────────────────────────────────────────
-
-def check_id_match(query_lower: str, kbs: list[dict]) -> list[dict]:
-    """
-    Fast-path: if the expanded query contains a KB id as a substring,
-    that's the strongest possible signal. Returns matched KBs.
-    """
-    matches = []
-    for kb in kbs:
-        kb_id = (kb.get("id") or "").lower()
+def check_id_match(query_lower: str, knowledge_bases: list[dict]) -> list[dict]:
+    """Return knowledge bases whose id appears in the query."""
+    matches: list[dict] = []
+    for knowledge_base in knowledge_bases:
+        kb_id = (knowledge_base.get("id") or "").lower()
         if kb_id and kb_id in query_lower:
-            matches.append(kb)
+            matches.append(knowledge_base)
     return matches
 
 
-# ── Routing ───────────────────────────────────────────────────────────────────
-
-# Minimum BM25 score to be considered a candidate
-SCORE_THRESHOLD = 1.0
-
-
 def route(query: str, registry: dict, verbose: bool = False) -> dict:
-    """
-    Route a query against all knowledge bases using BM25.
-
-    The query is expected to be Agent-expanded (synonyms, English terms, etc).
-    """
-    kbs = registry.get("knowledgeBases", [])
-    if not kbs:
+    """Route a query against all knowledge bases using BM25."""
+    knowledge_bases = registry.get("knowledgeBases", [])
+    if not knowledge_bases:
         return {"question": query, "strategy": "no_match", "matches": []}
-
-    query_lower = query.lower()
-
-    # ── Fast-path: KB id exact match ──────────────────────────────────
-    id_matches = check_id_match(query_lower, kbs)
+    id_matches = check_id_match(query.lower(), knowledge_bases)
     if id_matches:
-        if verbose:
-            for m in id_matches:
-                print(f"  ⚡ Fast-path ID match: [{m['id']}]", file=sys.stderr)
-        # If only one ID matched and it's strong, return immediately
-        # If multiple matched (e.g. "codex vs claude"), fall through to BM25
-        # to get proper scoring
-        if len(id_matches) == 1:
-            kb = id_matches[0]
-            return {
-                "question": query,
-                "strategy": "single_kb",
-                "matches": [{
-                    "kb_id":      kb["id"],
-                    "confidence": 1.0,
-                    "score":      999.0,
-                    "match_type": "id_exact",
-                    "wiki_path":  kb.get("path", ""),
-                    "abs_path":   kb.get("abs_path", ""),
-                    "page_count": kb.get("page_count", 0),
-                }],
-            }
-        # Multiple ID matches → fall through to BM25 for ranking
+        return handle_id_matches(query, id_matches, verbose)
+    return score_query(query, knowledge_bases, verbose)
 
-    # ── BM25 scoring ──────────────────────────────────────────────────
 
-    # Build tokenized corpus from bm25_corpus field
-    corpus_texts = [kb.get("bm25_corpus", kb.get("id", "")) for kb in kbs]
-    tokenized_corpus = [tokenize(text) for text in corpus_texts]
-
+def handle_id_matches(query: str, id_matches: list[dict], verbose: bool) -> dict:
+    """Handle fast-path matches for direct knowledge-base id references."""
     if verbose:
-        for i, (kb, tokens) in enumerate(zip(kbs, tokenized_corpus)):
-            print(f"  [{kb['id']}] corpus tokens ({len(tokens)}): {tokens[:20]}...", file=sys.stderr)
+        for match in id_matches:
+            LOGGER.info("Fast-path ID match: [%s]", match["id"])
+    if len(id_matches) == 1:
+        knowledge_base = id_matches[0]
+        return {
+            "question": query,
+            "strategy": "single_kb",
+            "matches": [
+                {
+                    "kb_id": knowledge_base["id"],
+                    "confidence": 1.0,
+                    "score": 999.0,
+                    "match_type": "id_exact",
+                    "wiki_path": knowledge_base.get("path", ""),
+                    "abs_path": knowledge_base.get("abs_path", ""),
+                    "page_count": knowledge_base.get("page_count", 0),
+                }
+            ],
+        }
+    return score_query(query, id_matches, verbose)
 
-    # Tokenize the Agent-expanded query
+
+def score_query(query: str, knowledge_bases: list[dict], verbose: bool) -> dict:
+    """Score a query against knowledge bases and determine routing strategy."""
+    corpus_texts = [
+        knowledge_base.get("bm25_corpus", knowledge_base.get("id", ""))
+        for knowledge_base in knowledge_bases
+    ]
+    tokenized_corpus = [tokenize(text) for text in corpus_texts]
     query_tokens = tokenize(query)
     if verbose:
-        print(f"  Query tokens ({len(query_tokens)}): {query_tokens}", file=sys.stderr)
-
-    # Score
+        log_scoring_inputs(knowledge_bases, tokenized_corpus, query_tokens)
     bm25 = BM25(tokenized_corpus)
     rankings = bm25.rank(query_tokens)
-
     if verbose:
-        print(f"\n  BM25 Scores:", file=sys.stderr)
-        for idx, score in rankings:
-            icon = "✅" if score >= SCORE_THRESHOLD else "  "
-            print(f"    {icon} [{kbs[idx]['id']}] score={score:.3f}", file=sys.stderr)
-
-    # Filter by threshold
-    candidates = []
-    for idx, score in rankings:
-        if score < SCORE_THRESHOLD:
-            continue
-        kb = kbs[idx]
-        candidates.append({
-            "kb_id":      kb["id"],
-            "confidence": round(min(score / 10.0, 1.0), 3),  # normalize to 0-1 range
-            "score":      round(score, 3),
-            "match_type": "bm25",
-            "wiki_path":  kb.get("path", ""),
-            "abs_path":   kb.get("abs_path", ""),
-            "page_count": kb.get("page_count", 0),
-        })
-
-    # Determine strategy
-    if len(candidates) == 0:
-        strategy = "no_match"
-    elif len(candidates) == 1:
-        strategy = "single_kb"
-    else:
-        strategy = "multi_kb"
-
+        log_rankings(rankings, knowledge_bases)
+    matches = build_candidates(rankings, knowledge_bases)
     return {
         "question": query,
-        "strategy": strategy,
-        "matches":  candidates,
+        "strategy": determine_strategy(matches),
+        "matches": matches,
     }
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='Route an Agent-expanded query to matching knowledge base(s) via BM25'
-    )
-    parser.add_argument(
-        '--query', '-q',
-        required=True,
-        help='Agent-expanded query string (with synonyms, English terms, etc)'
-    )
-    parser.add_argument(
-        '--registry', '-r',
-        default='.prism/registry.json',
-        help='Path to registry.json (default: .prism/registry.json)'
-    )
-    parser.add_argument(
-        '--out', '-o',
-        default=None,
-        help='Output path for route_result.json. If omitted, prints to stdout.'
-    )
-    parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Print scoring details to stderr'
-    )
-    args = parser.parse_args()
-
-    registry_path = Path(args.registry)
-    if not registry_path.exists():
-        print(
-            f"❌ Registry not found: {registry_path}\n"
-            f"   Run discover.py first to build the registry.",
-            file=sys.stderr
+def log_scoring_inputs(
+    knowledge_bases: list[dict],
+    tokenized_corpus: list[list[str]],
+    query_tokens: list[str],
+) -> None:
+    """Log tokenization inputs for verbose mode."""
+    for knowledge_base, tokens in zip(knowledge_bases, tokenized_corpus):
+        LOGGER.info(
+            "[%s] corpus tokens (%s): %s...",
+            knowledge_base["id"],
+            len(tokens),
+            tokens[:20],
         )
-        sys.exit(1)
+    LOGGER.info("Query tokens (%s): %s", len(query_tokens), query_tokens)
 
-    try:
-        registry = json.loads(registry_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"❌ Failed to read registry: {e}", file=sys.stderr)
-        sys.exit(1)
 
-    kb_count = len(registry.get("knowledgeBases", []))
-    if kb_count == 0:
-        print(
-            "⚠️  Registry is empty — no knowledge bases found.\n"
-            "   Run harvest + prism to build knowledge bases first.",
-            file=sys.stderr
+def log_rankings(rankings: list[tuple[int, float]], knowledge_bases: list[dict]) -> None:
+    """Log BM25 rankings for verbose mode."""
+    LOGGER.info("BM25 scores:")
+    for knowledge_base_index, score in rankings:
+        icon = "*" if score >= SCORE_THRESHOLD else "-"
+        LOGGER.info(
+            "  %s [%s] score=%.3f",
+            icon,
+            knowledge_bases[knowledge_base_index]["id"],
+            score,
         )
-        result = {"question": args.query, "strategy": "no_match", "matches": []}
-    else:
-        if args.verbose:
-            print(f"📚 Routing against {kb_count} knowledge bases...\n", file=sys.stderr)
-        result = route(args.query, registry, verbose=args.verbose)
 
-    output = json.dumps(result, ensure_ascii=False, indent=2)
 
-    if args.out:
-        out_path = Path(args.out)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(output, encoding='utf-8')
-        print(f"\n✅ Route result written to {out_path}", file=sys.stderr)
-    else:
-        print(output)
+def build_candidates(
+    rankings: list[tuple[int, float]],
+    knowledge_bases: list[dict],
+) -> list[dict]:
+    """Build route candidates above the score threshold."""
+    candidates: list[dict] = []
+    for knowledge_base_index, score in rankings:
+        if score < SCORE_THRESHOLD:
+            continue
+        knowledge_base = knowledge_bases[knowledge_base_index]
+        candidates.append(
+            {
+                "kb_id": knowledge_base["id"],
+                "confidence": round(min(score / 10.0, 1.0), 3),
+                "score": round(score, 3),
+                "match_type": "bm25",
+                "wiki_path": knowledge_base.get("path", ""),
+                "abs_path": knowledge_base.get("abs_path", ""),
+                "page_count": knowledge_base.get("page_count", 0),
+            }
+        )
+    return candidates
 
-    # Summary to stderr
+
+def determine_strategy(matches: list[dict]) -> str:
+    """Determine the route strategy from the candidate list."""
+    if not matches:
+        return "no_match"
+    if len(matches) == 1:
+        return "single_kb"
+    return "multi_kb"
+
+
+def load_registry(registry_path: Path) -> dict:
+    """Load the router registry from disk."""
+    return json.loads(registry_path.read_text(encoding="utf-8-sig"))
+
+
+def write_result(result: dict, output_path: str | None) -> None:
+    """Write the route result to stdout or a file."""
+    rendered_result = json.dumps(result, ensure_ascii=False, indent=2)
+    if output_path:
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(rendered_result, encoding="utf-8")
+        LOGGER.info("Route result written to %s", destination)
+        return
+    sys.stdout.write(rendered_result)
+    sys.stdout.write("\n")
+
+
+def log_summary(result: dict) -> None:
+    """Log a summary of the routing outcome."""
     strategy = result["strategy"]
     if strategy == "no_match":
-        print("\n🔍 No matching knowledge base found.", file=sys.stderr)
-    elif strategy == "single_kb":
-        m = result["matches"][0]
-        t = m.get("match_type", "")
-        print(f"\n✅ Routed to: [{m['kb_id']}] (score={m['score']}, type={t})", file=sys.stderr)
-    else:
-        print(f"\n✅ Multi-KB route ({len(result['matches'])} databases):", file=sys.stderr)
-        for m in result["matches"]:
-            print(f"   - [{m['kb_id']}] score={m['score']} ({m.get('match_type', '')})", file=sys.stderr)
+        LOGGER.info("No matching knowledge base found.")
+        return
+    if strategy == "single_kb":
+        match = result["matches"][0]
+        LOGGER.info(
+            "Routed to [%s] (score=%s, type=%s)",
+            match["kb_id"],
+            match["score"],
+            match.get("match_type", ""),
+        )
+        return
+    LOGGER.info("Multi-KB route (%s databases):", len(result["matches"]))
+    for match in result["matches"]:
+        LOGGER.info(
+            "- [%s] score=%s (%s)",
+            match["kb_id"],
+            match["score"],
+            match.get("match_type", ""),
+        )
+
+
+def main() -> int:
+    """Run the router command."""
+    configure_logging()
+    args = parse_args()
+    registry_path = Path(args.registry)
+    if not registry_path.exists():
+        LOGGER.error("Registry not found: %s", registry_path)
+        LOGGER.error("Run discover.py first to build the registry.")
+        return 1
+    try:
+        registry = load_registry(registry_path)
+    except Exception as exc:
+        LOGGER.error("Failed to read registry: %s", exc)
+        return 1
+    if args.verbose:
+        LOGGER.info(
+            "Routing against %s knowledge bases...",
+            len(registry.get("knowledgeBases", [])),
+        )
+    result = route(args.query, registry, verbose=args.verbose)
+    write_result(result, args.out)
+    log_summary(result)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

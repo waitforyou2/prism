@@ -1,253 +1,235 @@
 #!/usr/bin/env python3
-"""
-update_index.py — Rebuild wiki/pages/_index.md from existing page files.
-
-Scans wiki/pages/ for all .md files, reads their frontmatter,
-and regenerates the _index.md table of contents.
-
-Also writes machine-readable frontmatter to index.md so that
-discover.py can extract KB metadata without full parsing.
-
-Usage:
-  python update_index.py
-  python update_index.py --wiki-dir /path/to/wiki
-  python update_index.py --wiki-dir /path/to/wiki --kb-id claude
-"""
+"""Rebuild wiki/index.md from existing page files."""
 
 import argparse
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+LOGGER = logging.getLogger(__name__)
+
 DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
-
 TYPE_ICONS = {
-    "concept": "🧠",
-    "entity": "👤",
-    "synthesis": "🧪",
-    "overview": "🗺️",
-    "other": "📄"
+    "concept": "Concept",
+    "entity": "Entity",
+    "synthesis": "Synthesis",
+    "overview": "Overview",
+    "other": "Other",
 }
-
 TYPE_LABELS = {
-    "concept": "概念 (Concepts)",
-    "entity": "实体 (Entities)",
-    "synthesis": "综合分析 (Syntheses)",
-    "overview": "概览 (Overviews)",
-    "other": "其他 (Misc)"
+    "concept": "Concepts",
+    "entity": "Entities",
+    "synthesis": "Syntheses",
+    "overview": "Overviews",
+    "other": "Misc",
+}
+ENTITY_TYPE_ICONS = {
+    "person": "Person",
+    "tool": "Tool",
+    "company": "Company",
+    "product": "Product",
 }
 
-ENTITY_TYPE_ICONS = {
-    "person":   "🧑",
-    "tool":     "🔧",
-    "company":  "🏢",
-    "product":  "📦",
-}
+
+def configure_logging() -> None:
+    """Configure stderr logging for command-line execution."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Rebuild wiki/index.md")
+    parser.add_argument("--wiki-dir", default=str(DEFAULT_WIKI_DIR))
+    parser.add_argument(
+        "--kb-id",
+        default="",
+        help="Knowledge base ID to embed in frontmatter",
+    )
+    return parser.parse_args()
 
 
 def parse_frontmatter(text: str) -> dict:
     """Extract YAML frontmatter from a Markdown file."""
-    pattern = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
+    pattern = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
     match = pattern.match(text)
     if not match:
         return {}
-
-    fm: dict = {}
+    frontmatter: dict[str, str] = {}
     for line in match.group(1).splitlines():
-        if ':' not in line:
+        if ":" not in line:
             continue
-        key, _, value = line.partition(':')
-        key   = key.strip()
-        value = value.strip().strip('"').strip("'")
-        fm[key] = value
-    return fm
+        key, _, value = line.partition(":")
+        frontmatter[key.strip()] = value.strip().strip('"').strip("'")
+    return frontmatter
 
 
 def get_first_paragraph(text: str) -> str:
     """Extract the first non-heading paragraph from Markdown."""
     in_frontmatter = False
-    found_end = False
+    finished_frontmatter = False
     for line in text.splitlines():
-        if line.strip() == '---':
-            if not found_end:
-                in_frontmatter = True
-                continue
-        if in_frontmatter and line.strip() == '---':
-            in_frontmatter = False
-            found_end = True
+        if line.strip() == "---" and not finished_frontmatter:
+            in_frontmatter = not in_frontmatter
+            finished_frontmatter = finished_frontmatter or not in_frontmatter
             continue
         if in_frontmatter:
             continue
-        if line.startswith('#') or not line.strip():
+        if line.startswith("#") or not line.strip():
             continue
         return line.strip()[:100]
     return ""
 
 
-def scan_pages(wiki_dir: Path) -> dict[str, list]:
+def scan_pages(wiki_dir: Path) -> dict[str, list[dict]]:
     """Scan wiki/pages/ and group pages by type."""
+    groups: dict[str, list[dict]] = {
+        "overview": [],
+        "concept": [],
+        "entity": [],
+        "synthesis": [],
+        "other": [],
+    }
     pages_dir = wiki_dir / "pages"
-    groups: dict[str, list] = {"overview": [], "concept": [], "entity": [], "synthesis": [], "other": []}
-
-    for md_file in sorted(pages_dir.rglob("*.md")):
-        if md_file.name == "_index.md":
+    for markdown_file in sorted(pages_dir.rglob("*.md")):
+        if markdown_file.name == "_index.md":
             continue
         try:
-            text = md_file.read_text(encoding='utf-8')
+            text = markdown_file.read_text(encoding="utf-8")
         except Exception:
             continue
-
-        fm = parse_frontmatter(text)
-        page_type = fm.get("type", "other")
-        title = fm.get("title") or md_file.stem
-        description = get_first_paragraph(text)
-        rel_path = md_file.relative_to(wiki_dir).as_posix()
-
-        entry = {
-            "title": title,
-            "path": rel_path,
-            "tags": fm.get("tags", ""),
-            "updated": fm.get("updated", ""),
-            "entity_type": fm.get("entity_type", ""),
-            "description": description,
-        }
-
-        if page_type in groups:
-            groups[page_type].append(entry)
-        else:
-            groups["other"].append(entry)
-
+        frontmatter = parse_frontmatter(text)
+        page_type = frontmatter.get("type", "other")
+        groups.setdefault(page_type, groups["other"]).append(
+            {
+                "title": frontmatter.get("title") or markdown_file.stem,
+                "path": markdown_file.relative_to(wiki_dir).as_posix(),
+                "tags": frontmatter.get("tags", ""),
+                "updated": frontmatter.get("updated", ""),
+                "entity_type": frontmatter.get("entity_type", ""),
+                "description": get_first_paragraph(text),
+            }
+        )
     return groups
 
 
-def build_kb_summary(groups: dict) -> str:
-    """Generate a concise summary of the knowledge base for router discovery."""
+def collect_tags(groups: dict[str, list[dict]]) -> set[str]:
+    """Collect all tags mentioned in grouped page metadata."""
     all_tags: set[str] = set()
-    all_titles: list[str] = []
+    for page_group in groups.values():
+        for page in page_group:
+            raw_tags = page.get("tags")
+            if not raw_tags:
+                continue
+            for raw_tag in str(raw_tags).split(","):
+                clean_tag = raw_tag.strip().strip("[]'\" ")
+                if clean_tag:
+                    all_tags.add(clean_tag)
+    return all_tags
 
-    for items in groups.values():
-        for page in items:
-            all_titles.append(page["title"])
-            if page.get("tags"):
-                for t in str(page["tags"]).split(","):
-                    t = t.strip().strip("[]'\" ")
-                    if t:
-                        all_tags.add(t)
 
-    parts = []
+def build_kb_summary(groups: dict[str, list[dict]]) -> str:
+    """Generate a concise summary of the knowledge base."""
+    all_tags = collect_tags(groups)
+    all_titles = [page["title"] for group in groups.values() for page in group]
+    summary_lines: list[str] = []
     if all_tags:
-        parts.append(f"**标签**: {', '.join(sorted(all_tags))}")
+        summary_lines.append(f"**Tags**: {', '.join(sorted(all_tags))}")
     if all_titles:
         preview = ", ".join(all_titles[:15])
-        suffix = f" ... 等 {len(all_titles)} 个主题" if len(all_titles) > 15 else ""
-        parts.append(f"**覆盖主题**: {preview}{suffix}")
+        suffix = f" ... total {len(all_titles)} topics" if len(all_titles) > 15 else ""
+        summary_lines.append(f"**Topics**: {preview}{suffix}")
+    return "\n".join(summary_lines) if summary_lines else "(empty knowledge base)"
 
-    return "\n".join(parts) if parts else "(空知识库)"
 
-
-def build_index(groups: dict, wiki_dir: Path, kb_id: str = "") -> str:
+def build_index(groups: dict[str, list[dict]], wiki_dir: Path, kb_id: str = "") -> str:
+    """Build the generated index.md content."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    total = sum(len(v) for v in groups.values())
-
-    # Collect all tags for frontmatter
-    all_tags: set[str] = set()
-    for items in groups.values():
-        for page in items:
-            if page.get("tags"):
-                for t in str(page["tags"]).split(","):
-                    t = t.strip().strip("[]'\" ")
-                    if t:
-                        all_tags.add(t)
-    tags_str = ", ".join(sorted(all_tags)) if all_tags else ""
-
-    # Machine-readable frontmatter (consumed by discover.py)
-    fm_lines = ["---"]
+    total_pages = sum(len(group) for group in groups.values())
+    all_tags = collect_tags(groups)
+    frontmatter_lines = ["---"]
     if kb_id:
-        fm_lines.append(f"kb_id: {kb_id}")
-    fm_lines.append(f"page_count: {total}")
-    fm_lines.append(f"updated: {now}")
-    if tags_str:
-        fm_lines.append(f"tags: [{tags_str}]")
-    fm_lines += ["---", ""]
-
-    lines = fm_lines + [
-        "# Prism Wiki — 知识目录",
+        frontmatter_lines.append(f"kb_id: {kb_id}")
+    frontmatter_lines.append(f"page_count: {total_pages}")
+    frontmatter_lines.append(f"updated: {now}")
+    if all_tags:
+        frontmatter_lines.append(f"tags: [{', '.join(sorted(all_tags))}]")
+    frontmatter_lines.extend(["---", ""])
+    output_lines = frontmatter_lines + [
+        "# Prism Wiki Index",
         "",
-        f"> 最后更新: {now} | 共 {total} 个页面",
+        f"> Last updated: {now} | Total {total_pages} pages",
         "",
-        "## 📋 知识库概述",
+        "## Knowledge Base Summary",
         "",
         build_kb_summary(groups),
         "",
         "---",
         "",
     ]
-
     for type_key in ["overview", "concept", "entity", "synthesis", "other"]:
-        items = groups.get(type_key, [])
-        if not items:
+        page_group = groups.get(type_key, [])
+        if not page_group:
             continue
-
-        icon  = TYPE_ICONS.get(type_key, "📄")
-        label = TYPE_LABELS.get(type_key, type_key.title())
-        lines.append(f"## {icon} {label} ({len(items)})\n")
-
-        for page in sorted(items, key=lambda p: p["title"].lower()):
-            title = page["title"]
-            path  = page["path"]
-            desc  = page["description"]
-
-            if type_key == "entity" and page.get("entity_type"):
-                ei = ENTITY_TYPE_ICONS.get(page["entity_type"], "")
-                title_display = f"{ei} {title}" if ei else title
-            else:
-                title_display = title
-
-            if desc:
-                lines.append(f"- [[{title_display}]]({path}) — {desc}")
-            else:
-                lines.append(f"- [[{title_display}]]({path})")
-
-        lines.append("")
-
-    lines.append("---")
-    lines.append("*此文件由 `update_index.py` 自动生成，请勿手动编辑*")
-    return "\n".join(lines) + "\n"
+        output_lines.append(
+            f"## {TYPE_ICONS.get(type_key, 'Other')} "
+            f"{TYPE_LABELS.get(type_key, type_key.title())} ({len(page_group)})"
+        )
+        output_lines.append("")
+        output_lines.extend(build_page_lines(type_key, page_group))
+        output_lines.append("")
+    output_lines.append("---")
+    output_lines.append("*This file is generated by `update_index.py`. Do not edit manually.*")
+    return "\n".join(output_lines) + "\n"
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Rebuild wiki/index.md')
-    parser.add_argument('--wiki-dir', default=str(DEFAULT_WIKI_DIR))
-    parser.add_argument('--kb-id', default="", help='Knowledge base ID to embed in frontmatter')
-    args = parser.parse_args()
+def build_page_lines(type_key: str, page_group: list[dict]) -> list[str]:
+    """Build index lines for a page group."""
+    output_lines: list[str] = []
+    for page in sorted(page_group, key=lambda entry: entry["title"].lower()):
+        title = page["title"]
+        if type_key == "entity" and page.get("entity_type"):
+            prefix = ENTITY_TYPE_ICONS.get(page["entity_type"], "")
+            if prefix:
+                title = f"{prefix} {title}"
+        if page["description"]:
+            output_lines.append(f"- [[{title}]]({page['path']}) - {page['description']}")
+        else:
+            output_lines.append(f"- [[{title}]]({page['path']})")
+    return output_lines
 
-    wiki_dir  = Path(args.wiki_dir)
+
+def main() -> int:
+    """Run the index rebuild command."""
+    configure_logging()
+    args = parse_args()
+    wiki_dir = Path(args.wiki_dir)
     pages_dir = wiki_dir / "pages"
-
     if not pages_dir.exists():
-        print(f"❌ pages/ directory not found: {pages_dir}")
-        return
-
+        LOGGER.error("pages/ directory not found: %s", pages_dir)
+        return 1
     groups = scan_pages(wiki_dir)
-    total  = sum(len(v) for v in groups.values())
-
-    if total == 0:
-        print("ℹ️ No pages found in wiki/pages/ — index not updated")
-        return
-
-    # Infer kb_id from directory name if not provided
-    kb_id = args.kb_id or wiki_dir.parent.name
-
-    content    = build_index(groups, wiki_dir, kb_id)
+    total_pages = sum(len(group) for group in groups.values())
+    if total_pages == 0:
+        LOGGER.info("No pages found in wiki/pages/ - index not updated")
+        return 0
+    knowledge_base_id = args.kb_id or wiki_dir.parent.name
+    content = build_index(groups, wiki_dir, knowledge_base_id)
     index_path = wiki_dir / "index.md"
-    index_path.write_text(content, encoding='utf-8')
-
-    print(f"✅ Updated {index_path}")
-    print(f"   {total} pages: "
-          + ", ".join(f"{len(groups[k])} {k}s" for k in ["overview", "concept", "entity", "synthesis"] if groups[k]))
-    if kb_id:
-        print(f"   kb_id: {kb_id}")
+    index_path.write_text(content, encoding="utf-8")
+    LOGGER.info("Updated %s", index_path)
+    LOGGER.info(
+        "%s",
+        ", ".join(
+            f"{len(groups[group_name])} {group_name}s"
+            for group_name in ["overview", "concept", "entity", "synthesis"]
+            if groups[group_name]
+        ),
+    )
+    if knowledge_base_id:
+        LOGGER.info("kb_id: %s", knowledge_base_id)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

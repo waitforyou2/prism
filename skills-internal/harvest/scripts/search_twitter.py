@@ -1,57 +1,56 @@
 #!/usr/bin/env python3
-"""
-Twitter/X search via twitterapi.io.
-Requires TWITTER_API_KEY env var. Outputs JSON array to stdout.
-
-Usage:
-    python search_twitter.py "AI programming"
-    python search_twitter.py "GPT-5" --limit 10
-    python search_twitter.py --trends
-    python search_twitter.py --user OpenAI
-"""
+"""Twitter/X search via twitterapi.io."""
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-try:
-    import requests
-except ImportError:
-    print("Error: Install dependencies first: pip install requests", file=sys.stderr)
-    sys.exit(1)
+import requests
+
+LOGGER = logging.getLogger(__name__)
 
 requests.packages.urllib3.disable_warnings()
 
-REQUEST_KWARGS = {
-    "verify": False,
-}
-
+REQUEST_KWARGS = {"verify": False}
 TWITTER_API_BASE = "https://api.twitterapi.io"
-
-# Quality filter thresholds
 MIN_LIKES = 10
 MIN_RETWEETS = 5
 MIN_VIEWS = 500
 MIN_FOLLOWERS = 100
 
 
-def get_api_key():
-    key = os.environ.get("TWITTER_API_KEY")
-    if not key:
-        print("Error: TWITTER_API_KEY environment variable not set", file=sys.stderr)
-        print("Get a key from https://twitterapi.io", file=sys.stderr)
-        sys.exit(1)
-    return key
+def configure_logging() -> None:
+    """Configure stderr logging for command-line execution."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
-def api_request(endpoint, params=None):
-    """Make authenticated request to twitterapi.io."""
-    url = f"{TWITTER_API_BASE}{endpoint}"
-    resp = requests.get(
-        url,
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Twitter search via twitterapi.io")
+    parser.add_argument("query", nargs="?", help="Search query")
+    parser.add_argument("--limit", type=int, default=20, help="Max results")
+    parser.add_argument("--trends", action="store_true", help="Get worldwide trending topics")
+    parser.add_argument("--user", help="Get latest tweets from a specific user")
+    parser.add_argument("--out", help="Output JSON file path")
+    return parser.parse_args()
+
+
+def get_api_key() -> str:
+    """Read the Twitter API key from the environment."""
+    api_key = os.environ.get("TWITTER_API_KEY")
+    if not api_key:
+        raise ValueError("TWITTER_API_KEY environment variable not set")
+    return api_key
+
+
+def api_request(endpoint: str, params: dict | None = None) -> dict:
+    """Make an authenticated request to twitterapi.io."""
+    response = requests.get(
+        f"{TWITTER_API_BASE}{endpoint}",
         params=params or {},
         headers={
             "X-API-Key": get_api_key(),
@@ -60,75 +59,81 @@ def api_request(endpoint, params=None):
         timeout=30,
         **REQUEST_KWARGS,
     )
-    resp.raise_for_status()
-    return resp.json()
+    response.raise_for_status()
+    return response.json()
 
 
-def format_since_date(days_ago):
-    d = datetime.now(timezone.utc) - timedelta(days=days_ago)
-    return d.strftime("%Y-%m-%d")
+def format_since_date(days_ago: int) -> str:
+    """Format a UTC date string for Twitter search queries."""
+    target_date = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return target_date.strftime("%Y-%m-%d")
 
 
-def build_query(keyword, query_type):
-    """Build advanced search query."""
-    parts = [keyword, "-filter:retweets", "-filter:replies"]
-    days_ago = 7 if query_type == "Top" else 3
-    parts.append(f"since:{format_since_date(days_ago)}")
+def build_query(keyword: str, query_type: str) -> str:
+    """Build an advanced search query."""
+    query_parts = [keyword, "-filter:retweets", "-filter:replies"]
+    query_parts.append(
+        f"since:{format_since_date(7 if query_type == 'Top' else 3)}"
+    )
     if query_type == "Top":
-        parts.append("min_faves:10")
-    return " ".join(parts)
+        query_parts.append("min_faves:10")
+    return " ".join(query_parts)
 
 
-def fetch_page(query, query_type, cursor=None):
+def fetch_page(
+    query: str,
+    query_type: str,
+    cursor: str | None = None,
+) -> tuple[list[dict], str | None]:
     """Fetch one page of tweet search results."""
     params = {"query": query, "queryType": query_type}
     if cursor:
         params["cursor"] = cursor
-    data = api_request("/twitter/tweet/advanced_search", params)
-    tweets = data.get("tweets", [])
+    payload = api_request("/twitter/tweet/advanced_search", params)
+    tweets = payload.get("tweets", [])
     if not isinstance(tweets, list):
         tweets = []
-    next_cursor = data.get("next_cursor") if data.get("has_next_page") else None
+    next_cursor = payload.get("next_cursor") if payload.get("has_next_page") else None
     return tweets, next_cursor
 
 
-def quality_filter(tweets):
+def quality_filter(tweets: list[dict]) -> list[dict]:
     """Filter and rank tweets by quality metrics."""
-    filtered = []
-    for t in tweets:
-        # Skip replies
-        if t.get("type", "").lower().find("reply") >= 0:
+    filtered_tweets: list[dict] = []
+    for tweet in tweets:
+        if "reply" in tweet.get("type", "").lower():
             continue
-        if re.match(r"^@\w+\s", t.get("text", "").strip()):
+        if re.match(r"^@\w+\s", tweet.get("text", "").strip()):
             continue
-
-        author = t.get("author", {})
-        factor = 0.5 if author.get("isBlueVerified") else 1.0
-
-        if t.get("likeCount", 0) < MIN_LIKES * factor:
+        author = tweet.get("author", {})
+        threshold_factor = 0.5 if author.get("isBlueVerified") else 1.0
+        if tweet.get("likeCount", 0) < MIN_LIKES * threshold_factor:
             continue
-        if t.get("retweetCount", 0) < MIN_RETWEETS * factor:
+        if tweet.get("retweetCount", 0) < MIN_RETWEETS * threshold_factor:
             continue
-        if t.get("viewCount", 0) < MIN_VIEWS * factor:
+        if tweet.get("viewCount", 0) < MIN_VIEWS * threshold_factor:
             continue
-        if author.get("followers", 0) < MIN_FOLLOWERS * factor:
+        if author.get("followers", 0) < MIN_FOLLOWERS * threshold_factor:
             continue
-
-        filtered.append(t)
-
-    # Sort by quality score
-    def score(t):
-        s = t.get("likeCount", 0) * 2 + t.get("retweetCount", 0) * 3 + t.get("viewCount", 0) / 100
-        if t.get("author", {}).get("isBlueVerified"):
-            s += 50
-        return s
-
-    filtered.sort(key=score, reverse=True)
-    return filtered
+        filtered_tweets.append(tweet)
+    filtered_tweets.sort(key=score_tweet, reverse=True)
+    return filtered_tweets
 
 
-def tweet_to_result(tweet):
-    """Convert raw tweet to unified result format."""
+def score_tweet(tweet: dict) -> float:
+    """Compute a quality score for a tweet."""
+    score = (
+        tweet.get("likeCount", 0) * 2
+        + tweet.get("retweetCount", 0) * 3
+        + tweet.get("viewCount", 0) / 100
+    )
+    if tweet.get("author", {}).get("isBlueVerified"):
+        score += 50
+    return score
+
+
+def tweet_to_result(tweet: dict) -> dict:
+    """Convert a raw tweet to the unified result format."""
     author = tweet.get("author", {})
     return {
         "title": tweet.get("text", "")[:100],
@@ -152,99 +157,111 @@ def tweet_to_result(tweet):
     }
 
 
-def search_twitter(query, limit=20):
-    """Full search: Top (2 pages) + Latest (1 page), deduplicated and quality-filtered."""
+def search_twitter(query: str, limit: int = 20) -> list[dict]:
+    """Run the Twitter search workflow."""
     top_query = build_query(query, "Top")
     latest_query = build_query(query, "Latest")
-    print(f"Top query: {top_query}", file=sys.stderr)
-    print(f"Latest query: {latest_query}", file=sys.stderr)
+    LOGGER.info("Top query: %s", top_query)
+    LOGGER.info("Latest query: %s", latest_query)
 
-    all_tweets = []
-    seen_ids = set()
+    all_tweets: list[dict] = []
+    seen_ids: set[str] = set()
+    top_cursor = None
 
-    def add_tweets(tweets):
-        for t in tweets:
-            tid = t.get("id")
-            if tid and tid not in seen_ids:
-                seen_ids.add(tid)
-                all_tweets.append(t)
-
-    # Page 1: Top + Latest in sequence
-    try:
-        top1, top_cursor = fetch_page(top_query, "Top")
-        add_tweets(top1)
-        print(f"Top page 1: {len(top1)} tweets", file=sys.stderr)
-    except Exception as e:
-        print(f"Top page 1 error: {e}", file=sys.stderr)
-        top_cursor = None
-
-    try:
-        latest1, _ = fetch_page(latest_query, "Latest")
-        add_tweets(latest1)
-        print(f"Latest page 1: {len(latest1)} tweets", file=sys.stderr)
-    except Exception as e:
-        print(f"Latest page 1 error: {e}", file=sys.stderr)
-
-    # Page 2: Top only (more hot content)
+    top_cursor = fetch_search_batch(top_query, "Top", seen_ids, all_tweets)
+    fetch_search_batch(latest_query, "Latest", seen_ids, all_tweets)
     if top_cursor:
-        try:
-            top2, _ = fetch_page(top_query, "Top", top_cursor)
-            add_tweets(top2)
-            print(f"Top page 2: {len(top2)} tweets", file=sys.stderr)
-        except Exception as e:
-            print(f"Top page 2 error: {e}", file=sys.stderr)
+        fetch_search_batch(top_query, "Top", seen_ids, all_tweets, cursor=top_cursor)
 
-    print(f"Unique tweets: {len(all_tweets)}", file=sys.stderr)
-
-    # Quality filter
-    quality = quality_filter(all_tweets)
-    print(f"After quality filter: {len(quality)}", file=sys.stderr)
-
-    results = [tweet_to_result(t) for t in quality[:limit]]
-    return results
+    LOGGER.info("Unique tweets: %s", len(all_tweets))
+    filtered_tweets = quality_filter(all_tweets)
+    LOGGER.info("After quality filter: %s", len(filtered_tweets))
+    return [tweet_to_result(tweet) for tweet in filtered_tweets[:limit]]
 
 
-def get_trends():
+def fetch_search_batch(
+    query: str,
+    query_type: str,
+    seen_ids: set[str],
+    all_tweets: list[dict],
+    cursor: str | None = None,
+) -> str | None:
+    """Fetch one batch and extend the shared tweet collection."""
+    page_label = "2" if cursor else "1"
+    try:
+        tweets, next_cursor = fetch_page(query, query_type, cursor)
+    except Exception as exc:
+        LOGGER.warning("%s page %s error: %s", query_type, page_label, exc)
+        return None
+    append_new_tweets(tweets, seen_ids, all_tweets)
+    LOGGER.info("%s page %s: %s tweets", query_type, page_label, len(tweets))
+    return next_cursor
+
+
+def append_new_tweets(
+    tweets: list[dict],
+    seen_ids: set[str],
+    all_tweets: list[dict],
+) -> None:
+    """Append tweets that have not been seen before."""
+    for tweet in tweets:
+        tweet_id = tweet.get("id")
+        if tweet_id and tweet_id not in seen_ids:
+            seen_ids.add(tweet_id)
+            all_tweets.append(tweet)
+
+
+def get_trends() -> list[dict]:
     """Get worldwide Twitter trends."""
-    data = api_request("/twitter/trends", {"woeid": "1"})
-    return data.get("trends", [])
+    return api_request("/twitter/trends", {"woeid": "1"}).get("trends", [])
 
 
-def get_user_tweets(username):
+def get_user_tweets(username: str) -> list[dict]:
     """Get a user's latest tweets."""
-    data = api_request("/twitter/user/last_tweets", {"userName": username})
-    tweets = data.get("tweets", [])
+    tweets = api_request("/twitter/user/last_tweets", {"userName": username}).get(
+        "tweets",
+        [],
+    )
     if not isinstance(tweets, list):
         return []
-    return [tweet_to_result(t) for t in tweets]
+    return [tweet_to_result(tweet) for tweet in tweets]
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Twitter search via twitterapi.io")
-    parser.add_argument("query", nargs="?", help="Search query")
-    parser.add_argument("--limit", type=int, default=20, help="Max results (default: 20)")
-    parser.add_argument("--trends", action="store_true", help="Get worldwide trending topics")
-    parser.add_argument("--user", help="Get latest tweets from a specific user")
-    parser.add_argument("--out", help="Output JSON file path (bypasses stdout)")
-    args = parser.parse_args()
-
+def resolve_results(args: argparse.Namespace) -> list[dict]:
+    """Resolve which result set should be produced from arguments."""
     if args.trends:
-        results = get_trends()
-    elif args.user:
-        results = get_user_tweets(args.user)
-    elif args.query:
-        results = search_twitter(args.query, args.limit)
-    else:
-        parser.print_help()
-        sys.exit(1)
-        
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        print(f"Saved to {args.out}", file=sys.stderr)
-    else:
-        json.dump(results, sys.stdout, ensure_ascii=False, indent=2)
+        return get_trends()
+    if args.user:
+        return get_user_tweets(args.user)
+    if args.query:
+        return search_twitter(args.query, args.limit)
+    raise ValueError("A query, --trends, or --user option is required")
+
+
+def write_results(results: list[dict], output_file: str | None) -> None:
+    """Write results to stdout or a file."""
+    rendered_results = json.dumps(results, ensure_ascii=False, indent=2)
+    if output_file:
+        with open(output_file, "w", encoding="utf-8") as output_handle:
+            output_handle.write(rendered_results)
+        LOGGER.info("Saved to %s", output_file)
+        return
+    sys.stdout.write(rendered_results)
+    sys.stdout.write("\n")
+
+
+def main() -> int:
+    """Run the Twitter search command."""
+    configure_logging()
+    args = parse_args()
+    try:
+        results = resolve_results(args)
+    except ValueError as exc:
+        LOGGER.error("%s", exc)
+        return 1
+    write_results(results, args.out)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

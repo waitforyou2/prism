@@ -1,0 +1,419 @@
+#!/usr/bin/env python3
+"""
+International web search: Bing, Google, DuckDuckGo, HackerNews.
+No API keys required. Outputs JSON array to stdout.
+
+Usage:
+    python search_web.py "AI programming"
+    python search_web.py "GPT-5" --sources bing,hackernews
+    python search_web.py "AI" --limit 10
+"""
+
+import argparse
+import json
+import random
+import sys
+import time
+import math
+import re
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urlencode, urlparse, parse_qs, unquote
+
+try:
+    import requests
+    from bs4 import BeautifulSoup
+except ImportError:
+    print("Error: Install dependencies first: pip install requests beautifulsoup4", file=sys.stderr)
+    sys.exit(1)
+
+requests.packages.urllib3.disable_warnings()
+
+REQUEST_KWARGS = {
+    "verify": False,
+}
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+]
+
+ALL_SOURCES = ["bing", "google", "duckduckgo", "hackernews", "github", "youtube"]
+
+
+def get_headers(lang="en"):
+    accept_lang = "en-US,en;q=0.5" if lang == "en" else "zh-CN,zh;q=0.9,en;q=0.8"
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": accept_lang,
+    }
+
+
+def search_bing(query, limit=20):
+    """Search Bing via HTML scraping."""
+    try:
+        resp = requests.get(
+            "https://www.bing.com/search",
+            params={"q": query, "count": limit},
+            headers=get_headers(),
+            timeout=15,
+            **REQUEST_KWARGS,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        results = []
+        for item in soup.select("li.b_algo"):
+            title_el = item.select_one("h2 a")
+            if not title_el:
+                continue
+            title = title_el.get_text(strip=True)
+            url = title_el.get("href", "")
+            snippet_el = item.select_one(".b_caption p")
+            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+            if title and url and url.startswith("http"):
+                results.append({
+                    "title": title,
+                    "content": snippet,
+                    "url": url,
+                    "source": "bing",
+                })
+                if len(results) >= limit:
+                    break
+        print(f"Bing: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"Bing error: {e}", file=sys.stderr)
+        return []
+
+
+def search_google(query, limit=20):
+    """Search Google via HTML scraping."""
+    try:
+        resp = requests.get(
+            "https://www.google.com/search",
+            params={"q": query, "num": limit, "hl": "en"},
+            headers=get_headers(),
+            timeout=15,
+            **REQUEST_KWARGS,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        results = []
+        for item in soup.select("div.g"):
+            h3 = item.select_one("h3")
+            if not h3:
+                continue
+            title = h3.get_text(strip=True)
+            link_el = item.select_one("a")
+            url = link_el.get("href", "") if link_el else ""
+            snippet_el = item.select_one(".VwiC3b")
+            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+            if title and url and url.startswith("http"):
+                results.append({
+                    "title": title,
+                    "content": snippet,
+                    "url": url,
+                    "source": "google",
+                })
+                if len(results) >= limit:
+                    break
+        print(f"Google: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"Google error: {e}", file=sys.stderr)
+        return []
+
+
+def search_duckduckgo(query, limit=20):
+    """Search DuckDuckGo via HTML version."""
+    try:
+        resp = requests.get(
+            "https://html.duckduckgo.com/html/",
+            params={"q": query},
+            headers=get_headers(),
+            timeout=15,
+            **REQUEST_KWARGS,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        results = []
+        for item in soup.select(".result"):
+            title_el = item.select_one(".result__title a")
+            if not title_el:
+                continue
+            title = title_el.get_text(strip=True)
+            raw_url = title_el.get("href", "")
+            snippet_el = item.select_one(".result__snippet")
+            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+
+            # Extract real URL from DuckDuckGo redirect
+            url = raw_url
+            if "uddg=" in raw_url:
+                try:
+                    # Handle both //duckduckgo.com/l/?uddg= and ?uddg= formats
+                    full_url = raw_url if raw_url.startswith("http") else "https:" + raw_url
+                    parsed = urlparse(full_url)
+                    params = parse_qs(parsed.query)
+                    extracted = unquote(params.get("uddg", [""])[0])
+                    # Skip ad redirect URLs (contain duckduckgo.com/y.js)
+                    if extracted and "duckduckgo.com/y.js" not in extracted:
+                        url = extracted
+                    else:
+                        continue  # Skip ad results
+                except Exception:
+                    pass
+
+            if title and url and url.startswith("http"):
+                results.append({
+                    "title": title,
+                    "content": snippet,
+                    "url": url,
+                    "source": "duckduckgo",
+                })
+                if len(results) >= limit:
+                    break
+        print(f"DuckDuckGo: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"DuckDuckGo error: {e}", file=sys.stderr)
+        return []
+
+
+def search_hackernews(query, limit=20):
+    """Search Hacker News via Algolia API (official, free, no key needed)."""
+    try:
+        one_day_ago = int((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp())
+        resp = requests.get(
+            "https://hn.algolia.com/api/v1/search",
+            params={
+                "query": query,
+                "tags": "story",
+                "hitsPerPage": limit,
+                "numericFilters": f"created_at_i>{one_day_ago}",
+            },
+            timeout=15,
+            **REQUEST_KWARGS,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for hit in data.get("hits", []):
+            if not (hit.get("url") or hit.get("story_text")):
+                continue
+            url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
+            results.append({
+                "title": hit.get("title", ""),
+                "content": hit.get("story_text") or hit.get("title", ""),
+                "url": url,
+                "source": "hackernews",
+                "sourceId": hit.get("objectID"),
+                "publishedAt": hit.get("created_at"),
+                "score": hit.get("points", 0),
+                "commentCount": hit.get("num_comments", 0),
+                "author": {
+                    "name": hit.get("author", ""),
+                    "username": hit.get("author", ""),
+                },
+            })
+            if len(results) >= limit:
+                break
+        print(f"HackerNews: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"HackerNews error: {e}", file=sys.stderr)
+        return []
+
+
+# ============================================================
+# GitHub Search
+# ============================================================
+def search_github(query, limit=20):
+    """Search GitHub repositories via public API (sorted by stars)."""
+    try:
+        resp = requests.get(
+            "https://api.github.com/search/repositories",
+            params={
+                "q": query,
+                "sort": "stars",
+                "per_page": limit,
+            },
+            headers={"User-Agent": rand_ua() if "rand_ua" in globals() else "Mozilla/5.0"},
+            timeout=15,
+            **REQUEST_KWARGS,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("items"):
+            print("GitHub: no results", file=sys.stderr)
+            return []
+
+        results = []
+        for item in data["items"]:
+            results.append({
+                "title": item.get("full_name", ""),
+                "content": item.get("description") or "",
+                "url": item.get("html_url", ""),
+                "source": "github",
+                "sourceId": str(item.get("id", "")),
+                "viewCount": item.get("stargazers_count", 0),
+                "likeCount": item.get("stargazers_count", 0),
+                "author": {
+                    "name": item.get("owner", {}).get("login", ""),
+                    "username": item.get("owner", {}).get("login", ""),
+                },
+                "publishedAt": item.get("updated_at"),
+            })
+            if len(results) >= limit:
+                break
+
+        print(f"GitHub: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"GitHub error: {e}", file=sys.stderr)
+        return []
+
+
+# ============================================================
+# YouTube Search
+# ============================================================
+def search_youtube(query, limit=20):
+    """Search YouTube videos via HTML ytInitialData extraction."""
+    try:
+        resp = requests.get(
+            "https://www.youtube.com/results",
+            params={"search_query": query},
+            headers={"User-Agent": rand_ua() if "rand_ua" in globals() else "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            timeout=15,
+            **REQUEST_KWARGS,
+        )
+        resp.raise_for_status()
+        
+        match = re.search(r'ytInitialData = ({.*?});</script>', resp.text)
+        if not match:
+            print("YouTube: no ytInitialData found", file=sys.stderr)
+            return []
+            
+        data = json.loads(match.group(1))
+        contents = data.get('contents', {}).get('twoColumnSearchResultsRenderer', {}).get('primaryContents', {}).get('sectionListRenderer', {}).get('contents', [])
+        
+        results = []
+        for c in contents:
+            items = c.get('itemSectionRenderer', {}).get('contents', [])
+            for item in items:
+                video = item.get('videoRenderer')
+                if not video:
+                    continue
+                    
+                title = video.get('title', {}).get('runs', [{}])[0].get('text', '')
+                video_id = video.get('videoId')
+                views_str = video.get('viewCountText', {}).get('simpleText', '')
+                
+                # Parse views
+                view_count = 0
+                if views_str:
+                    num_match = re.search(r'([\d,]+)', views_str)
+                    if num_match:
+                        view_count = int(num_match.group(1).replace(',', ''))
+                        
+                channel = video.get('ownerText', {}).get('runs', [{}])[0].get('text', '')
+                desc_snippets = video.get('detailedMetadataSnippets', [{}])
+                desc = ""
+                if desc_snippets:
+                    runs = desc_snippets[0].get('snippetText', {}).get('runs', [])
+                    desc = "".join([r.get('text', '') for r in runs])
+
+                if title and video_id:
+                    results.append({
+                        "title": title,
+                        "content": desc or title,
+                        "url": f"https://www.youtube.com/watch?v={video_id}",
+                        "source": "youtube",
+                        "sourceId": video_id,
+                        "viewCount": view_count,
+                        "author": {
+                            "name": channel,
+                            "username": channel
+                        }
+                    })
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+                
+        print(f"YouTube: {len(results)} results", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"YouTube error: {e}", file=sys.stderr)
+        return []
+
+
+def deduplicate(results):
+    """Remove duplicate URLs after normalization."""
+    seen = set()
+    unique = []
+    for r in results:
+        normalized = r["url"].rstrip("/").replace("http://www.", "https://").replace("https://www.", "https://")
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append(r)
+    return unique
+
+
+SEARCH_FNS = {
+    "bing": search_bing,
+    "google": search_google,
+    "duckduckgo": search_duckduckgo,
+    "hackernews": search_hackernews,
+    "github": search_github,
+    "youtube": search_youtube,
+}
+
+RATE_LIMITS = {
+    "bing": 5,
+    "google": 10,
+    "duckduckgo": 3,
+    "hackernews": 1,
+    "github": 2,
+    "youtube": 3,
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="International web search aggregator")
+    parser.add_argument("query", help="Search query")
+    parser.add_argument("--sources", default=",".join(ALL_SOURCES),
+                        help=f"Comma-separated sources (default: {','.join(ALL_SOURCES)})")
+    parser.add_argument("--limit", type=int, default=20, help="Max results per source (default: 20)")
+    parser.add_argument("--out", help="Output JSON file path (bypasses stdout)")
+    args = parser.parse_args()
+
+    sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()]
+    invalid = [s for s in sources if s not in SEARCH_FNS]
+    if invalid:
+        print(f"Unknown sources: {invalid}. Available: {ALL_SOURCES}", file=sys.stderr)
+        sys.exit(1)
+
+    all_results = []
+    for i, source in enumerate(sources):
+        if i > 0:
+            delay = RATE_LIMITS.get(source, 3)
+            print(f"Waiting {delay}s before {source}...", file=sys.stderr)
+            time.sleep(delay)
+        results = SEARCH_FNS[source](args.query, args.limit)
+        all_results.extend(results)
+
+    unique = deduplicate(all_results)
+    print(f"\nTotal: {len(all_results)} → {len(unique)} after dedup", file=sys.stderr)
+    
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(unique, f, ensure_ascii=False, indent=2)
+        print(f"Saved to {args.out}", file=sys.stderr)
+    else:
+        json.dump(unique, sys.stdout, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    main()

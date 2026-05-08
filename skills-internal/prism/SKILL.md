@@ -4,8 +4,10 @@ description: >
   Manage LLM Wiki knowledge bases — ingest harvested content and compile into structured pages.
   Use when users ask to: organize wiki, process new content, update knowledge base,
   "整理 wiki", "更新知识库", "把最近抓的内容整理一下", "prism", "process raw layer",
-  "organize new raw content", "build wiki pages", "知识整理", or after running the
-  harvest skill and wanting to convert raw articles into structured knowledge.
+  "organize new raw content", "build wiki pages", "知识整理", "health check",
+  "巡检", "检查质量", "检查时效性", "检查可用性", "维护知识库", "吸收新增资料",
+  "增量编译", "沉淀高价值问答", "对话知识回流", or after running the harvest skill and
+  wanting to convert raw articles into structured knowledge.
 ---
 
 # prism — LLM Wiki 知识管理技能
@@ -120,7 +122,17 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 
 4. **If raw/ is empty or all compiled** → the WIKI.md constitution handles Query mode directly. No action needed from this skill.
 
-5. **If user asked for a health check** → run **Lint** as defined in WIKI.md.
+5. **If user asked for a health check, 巡检, quality check, freshness check, or usability check**:
+   - Do not stop at file counts or existence checks.
+   - Run the **Health Check** operation defined in WIKI.md.
+   - Evaluate whether the wiki is still navigable, understandable, trustworthy, and maintainable.
+   - Report overall status first, then list issues by severity with repair suggestions.
+
+6. **If user asked to maintain, self-update, absorb new material, incrementally compile, or preserve a
+   high-value conversation**:
+   - Run the **Maintenance / Self-update** operation defined in WIKI.md.
+   - Treat raw files, recent internal documents, and user-approved conversation insights as possible increments.
+   - Update only the affected knowledge objects instead of rewriting the whole wiki.
 
 > The constitution (WIKI.md) is the authoritative guide. Follow it exactly for all formatting, classification, and writing conventions.
 

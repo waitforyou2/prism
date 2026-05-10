@@ -47,24 +47,33 @@ class NormalizeRawTests(unittest.TestCase):
             self.assertEqual(len(pending), 1)
             self.assertEqual(pending[0]["source"], "manual")
             self.assertFalse(pending[0]["compiled"])
-            self.assertTrue((wiki_dir / pending[0]["path"]).exists())
+            raw_path = wiki_dir / pending[0]["path"]
+            self.assertTrue(raw_path.exists())
+            self.assertFalse(raw_path.with_suffix(".meta.json").exists())
+            self.assertFalse((wiki_dir / "raw" / "_meta").exists())
+            index = json.loads((wiki_dir / "raw" / "_index.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["files"][0]["path"], pending[0]["path"])
 
-    def test_preserves_existing_compiled_metadata(self):
+    def test_preserves_existing_index_compiled_metadata(self):
         with TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "topic" / "wiki"
             raw_dir = wiki_dir / "raw" / "20260510" / "manual"
             raw_dir.mkdir(parents=True)
             md_file = raw_dir / "already-compiled.md"
             md_file.write_text("# Already Compiled\n\nDo not reopen this.", encoding="utf-8")
-            meta_file = raw_dir / "already-compiled.meta.json"
-            meta_file.write_text(
+            index_file = wiki_dir / "raw" / "_index.json"
+            index_file.write_text(
                 json.dumps(
                     {
-                        "path": "raw/20260510/manual/already-compiled.md",
-                        "title": "Already Compiled",
-                        "source": "manual",
-                        "keyword": "topic",
-                        "compiled": True,
+                        "files": [
+                            {
+                                "path": "raw/20260510/manual/already-compiled.md",
+                                "title": "Already Compiled",
+                                "source": "manual",
+                                "keyword": "topic",
+                                "compiled": True,
+                            }
+                        ]
                     },
                     ensure_ascii=False,
                 ),
@@ -74,8 +83,49 @@ class NormalizeRawTests(unittest.TestCase):
             summary = normalize_raw.normalize_raw(wiki_dir, keyword="topic")
 
             self.assertEqual(summary["registered"], 0)
-            metadata = json.loads(meta_file.read_text(encoding="utf-8"))
-            self.assertTrue(metadata["compiled"])
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+            self.assertTrue(index["files"][0]["compiled"])
+
+    def test_scan_does_not_warn_when_index_metadata_exists(self):
+        with TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "topic" / "wiki"
+            raw_dir = wiki_dir / "raw" / "20260510" / "manual"
+            raw_dir.mkdir(parents=True)
+            (raw_dir / "registered.md").write_text("# Registered\n\nHas metadata.", encoding="utf-8")
+            index_file = wiki_dir / "raw" / "_index.json"
+            index_file.write_text(
+                json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "raw/20260510/manual/registered.md",
+                                "title": "Registered",
+                                "source": "manual",
+                                "keyword": "topic",
+                                "compiled": False,
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_DIR / "scan_raw.py"),
+                    "--wiki-dir",
+                    str(wiki_dir),
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(len(json.loads(result.stdout)), 1)
 
     def test_scan_warns_about_orphan_markdown(self):
         with TemporaryDirectory() as tmp:

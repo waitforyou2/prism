@@ -1,59 +1,41 @@
 #!/usr/bin/env python3
-"""
-scan_raw.py — Scan wiki/raw/ for unprocessed files and print a prioritized list.
-
-Reads wiki/raw/**/*.meta.json as the source of truth for compiled state,
-falls back to wiki/raw/_index.json only when no meta files exist, then
-sorts by importance + relevance and outputs a formatted Markdown report
-for the AI to read before deciding how to organize pages.
-
-Usage:
-  python scan_raw.py
-  python scan_raw.py --wiki-dir /path/to/wiki
-  python scan_raw.py --keyword "harness engineering"   # filter by keyword
-  python scan_raw.py --json                            # output raw JSON instead of Markdown
-"""
+"""Scan wiki/raw/ for uncompiled files."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
 
-DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 
+DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 IMPORTANCE_ORDER = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
 IMPORTANCE_ICONS = {
-    "urgent": "🚨 Urgent",
-    "high":   "🔴 High",
-    "medium": "🟡 Medium",
-    "low":    "🟢 Low",
+    "urgent": "Urgent",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
 }
 
 
-def load_index(wiki_dir: Path) -> list:
+def load_index(wiki_dir: Path) -> list[dict]:
     index_path = wiki_dir / "raw" / "_index.json"
     if not index_path.exists():
         return []
     try:
-        data = json.loads(index_path.read_text(encoding='utf-8'))
-        return data.get("files", [])
-    except Exception as e:
-        print(f"❌ Failed to read index: {e}", file=sys.stderr)
+        data = json.loads(index_path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        print(f"Failed to read index: {exc}", file=sys.stderr)
         return []
+    return data.get("files", [])
 
 
-def load_meta_files(wiki_dir: Path) -> list:
-    raw_dir = wiki_dir / "raw"
-    if not raw_dir.exists():
-        return []
-
-    records = []
-    for meta_path in sorted(raw_dir.rglob("*.meta.json")):
-        try:
-            records.append(json.loads(meta_path.read_text(encoding='utf-8')))
-        except Exception as e:
-            print(f"⚠️ Failed to read meta file {meta_path}: {e}", file=sys.stderr)
-    return records
+def index_paths(wiki_dir: Path, records: list[dict]) -> set[Path]:
+    paths = set()
+    for record in records:
+        record_path = record.get("path")
+        if record_path:
+            paths.add((wiki_dir / record_path).resolve())
+    return paths
 
 
 def find_orphan_markdown(wiki_dir: Path) -> list[Path]:
@@ -61,29 +43,86 @@ def find_orphan_markdown(wiki_dir: Path) -> list[Path]:
     if not raw_dir.exists():
         return []
 
+    indexed_paths = index_paths(wiki_dir, load_index(wiki_dir))
     orphans = []
     for md_path in sorted(raw_dir.rglob("*.md")):
-        if any(part in {"originals", "__pycache__"} for part in md_path.relative_to(raw_dir).parts[:-1]):
+        rel_parts = md_path.relative_to(raw_dir).parts
+        if any(part in {"originals", "__pycache__"} for part in rel_parts[:-1]):
             continue
-        meta_path = md_path.with_suffix(".meta.json")
-        if not meta_path.exists():
-            orphans.append(md_path)
+        if md_path.resolve() in indexed_paths:
+            continue
+        orphans.append(md_path)
     return orphans
 
 
-def format_words(n: int) -> str:
-    if n == 0:
+def format_words(word_count: int) -> str:
+    if word_count == 0:
         return "snippet only"
-    if n >= 1000:
-        return f"{n/1000:.1f}k words"
-    return f"{n} words"
+    if word_count >= 1000:
+        return f"{word_count / 1000:.1f}k words"
+    return f"{word_count} words"
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Scan wiki/raw/ for unprocessed files')
-    parser.add_argument('--wiki-dir', default=str(DEFAULT_WIKI_DIR))
-    parser.add_argument('--keyword',  default=None, help='Filter by keyword')
-    parser.add_argument('--json',     action='store_true', help='Output JSON instead of Markdown')
+def select_unprocessed(files: list[dict], keyword: str | None) -> list[dict]:
+    unprocessed = [record for record in files if not record.get("compiled", False)]
+    if keyword:
+        lowered_keyword = keyword.lower()
+        unprocessed = [
+            record
+            for record in unprocessed
+            if lowered_keyword in record.get("keyword", "").lower()
+        ]
+    unprocessed.sort(
+        key=lambda record: (
+            IMPORTANCE_ORDER.get(record.get("importance", "low"), 3),
+            -(record.get("relevance", 0)),
+        )
+    )
+    return unprocessed
+
+
+def write_json_output(unprocessed: list[dict]) -> None:
+    print(json.dumps(unprocessed, ensure_ascii=False, indent=2))
+
+
+def write_markdown_output(unprocessed: list[dict], wiki_dir: Path) -> None:
+    print(f"## Pending files ({len(unprocessed)})\n")
+    print(f"> wiki dir: `{wiki_dir}`\n")
+
+    groups: dict[str, list[dict]] = {}
+    for record in unprocessed:
+        groups.setdefault(record.get("importance", "low"), []).append(record)
+
+    for importance_key in ["urgent", "high", "medium", "low"]:
+        records = groups.get(importance_key, [])
+        if not records:
+            continue
+        print(f"### {IMPORTANCE_ICONS[importance_key]} ({len(records)})\n")
+        for record in records:
+            title = record.get("title", "(no title)")[:70]
+            keyword = record.get("keyword", "")
+            source = record.get("source", "")
+            relevance = record.get("relevance", 0)
+            fetched_at = (record.get("fetchedAt") or "")[:10]
+            print(f"- **{title}**")
+            print(
+                f"  keyword: `{keyword}` | source: {source} | relevance: {relevance}"
+                f" | {format_words(record.get('wordCount', 0))} | {fetched_at}"
+            )
+            print(f"  path: `{record.get('path', '')}`")
+            if record.get("url"):
+                print(f"  url: {record['url']}")
+            print()
+
+    print("---")
+    print("*Run the `prism` skill following `wiki/WIKI.md` to organize these files into `wiki/pages/`.*")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Scan wiki/raw/ for unprocessed files")
+    parser.add_argument("--wiki-dir", default=str(DEFAULT_WIKI_DIR))
+    parser.add_argument("--keyword", default=None, help="Filter by keyword")
+    parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown")
     args = parser.parse_args()
 
     wiki_dir = Path(args.wiki_dir)
@@ -94,68 +133,17 @@ def main():
             file=sys.stderr,
         )
 
-    files = load_meta_files(wiki_dir)
-    if not files:
-        files = load_index(wiki_dir)
-
-    # Filter
-    unprocessed = [f for f in files if not f.get("compiled", False)]
-    if args.keyword:
-        unprocessed = [f for f in unprocessed if args.keyword.lower() in f.get("keyword", "").lower()]
-
-    if not unprocessed:
-        if args.json:
-            print("[]")
-        else:
-            print("✅ No uncompiled files in wiki/raw/")
-        return
-
-    # Sort: importance asc (urgent first), then relevance desc
-    unprocessed.sort(key=lambda f: (
-        IMPORTANCE_ORDER.get(f.get("importance", "low"), 3),
-        -(f.get("relevance", 0))
-    ))
+    files = load_index(wiki_dir)
+    unprocessed = select_unprocessed(files, args.keyword)
 
     if args.json:
-        print(json.dumps(unprocessed, ensure_ascii=False, indent=2))
-        return
-
-    # Markdown output
-    print(f"## 📥 待处理文件（共 {len(unprocessed)} 个）\n")
-    print(f"> wiki 目录: `{wiki_dir}`\n")
-
-    # Group by importance
-    groups: dict[str, list] = {}
-    for f in unprocessed:
-        imp = f.get("importance", "low")
-        groups.setdefault(imp, []).append(f)
-
-    for imp_key in ["urgent", "high", "medium", "low"]:
-        items = groups.get(imp_key, [])
-        if not items:
-            continue
-        label = IMPORTANCE_ICONS[imp_key]
-        print(f"### {label} ({len(items)})\n")
-        for f in items:
-            words_str  = format_words(f.get("wordCount", 0))
-            relevance  = f.get("relevance", 0)
-            source     = f.get("source", "")
-            keyword    = f.get("keyword", "")
-            title      = f.get("title", "(no title)")[:70]
-            path       = f.get("path", "")
-            url        = f.get("url", "")
-            fetched_at = (f.get("fetchedAt") or "")[:10]
-
-            print(f"- **{title}**")
-            print(f"  keyword: `{keyword}` | source: {source} | relevance: {relevance} | {words_str} | {fetched_at}")
-            print(f"  path: `{path}`")
-            if url:
-                print(f"  url: {url}")
-            print()
-
-    print("---")
-    print(f"*运行 `prism` skill 按照 `wiki/WIKI.md` 的规范将这些内容整理到 `wiki/pages/`*")
+        write_json_output(unprocessed)
+    elif unprocessed:
+        write_markdown_output(unprocessed, wiki_dir)
+    else:
+        print("No uncompiled files in wiki/raw/")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

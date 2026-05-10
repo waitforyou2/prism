@@ -112,15 +112,17 @@ def save_index(index_path: Path, index: dict) -> None:
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def existing_meta_paths(raw_dir: Path) -> set[Path]:
+def existing_index_paths(wiki_dir: Path, index: dict) -> set[Path]:
     paths = set()
-    for meta_path in raw_dir.rglob("*.meta.json"):
-        paths.add(meta_path.with_suffix("").with_suffix(".md").resolve())
+    for record in index.get("files", []):
+        record_path = record.get("path")
+        if record_path:
+            paths.add((wiki_dir / record_path).resolve())
     return paths
 
 
 def should_skip(path: Path, raw_dir: Path) -> bool:
-    if path.name == "_index.json" or path.name.endswith(".meta.json"):
+    if path.name == "_index.json":
         return True
     try:
         rel_parts = path.relative_to(raw_dir).parts
@@ -201,7 +203,6 @@ def register_markdown(path: Path, wiki_dir: Path, keyword: str, index: dict) -> 
     target_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"{slug(title)}_{fingerprint}"
     target_md = unique_path(target_dir, base_name, ".md")
-    target_meta = target_md.with_suffix(".meta.json")
 
     normalized_text = ensure_markdown_frontmatter(text, title, keyword, fetched_at, words)
     if path.resolve() == target_md.resolve():
@@ -219,7 +220,6 @@ def register_markdown(path: Path, wiki_dir: Path, keyword: str, index: dict) -> 
         words=words,
         original_path=original_rel,
     )
-    target_meta.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     index["files"].append(record)
     return record
 
@@ -236,7 +236,6 @@ def register_document(path: Path, wiki_dir: Path, keyword: str, index: dict) -> 
     target_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"{slug(title)}_{fingerprint}"
     target_md = unique_path(target_dir, base_name, ".md")
-    target_meta = target_md.with_suffix(".meta.json")
     target_md.write_text(
         ensure_markdown_frontmatter(markdown, title, keyword, fetched_at, words),
         encoding="utf-8",
@@ -255,7 +254,6 @@ def register_document(path: Path, wiki_dir: Path, keyword: str, index: dict) -> 
         words=words,
         original_path=archived_original.relative_to(wiki_dir).as_posix(),
     )
-    target_meta.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     index["files"].append(record)
     return record
 
@@ -270,7 +268,7 @@ def normalize_raw(wiki_dir: Path, keyword: str | None = None) -> dict:
 
     index_path = raw_dir / "_index.json"
     index = load_index(index_path)
-    registered_paths = existing_meta_paths(raw_dir)
+    registered_paths = existing_index_paths(wiki_dir, index)
 
     for path in iter_manual_files(raw_dir):
         if path.resolve() in registered_paths:

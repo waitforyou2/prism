@@ -113,7 +113,7 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
     - **Update/Enrich Mode**: If a page for a concept/entity already exists, **DRASTICALLY ENRICH** it with new details and citations rather than just creating small stubs.
     - **Multi-perspective Overviews**: Create/update pages in `[topic]/wiki/pages/overview/`, `[topic]/wiki/pages/concepts/`, and `[topic]/wiki/pages/entities/`. If the topic has broad knowledge breadth, generate multiple overviews for different perspectives (e.g., technical, community, user-guide).
     - **Internal Citations Only**: Use `[[raw/YYYYMMDD/filename.md]]` format. Never use external URLs for sources.
-   - Mark each `.meta.json` as `"compiled": true`
+   - Mark each matching record in `raw/_index.json` as `"compiled": true`
    - Append entries to `[topic]/wiki/log.md`
    - After all done, run:
      ```bash

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Scan wiki/raw/ for unprocessed files and emit JSON or Markdown output."""
+"""Scan wiki/raw/ for uncompiled files."""
 
 import argparse
 import json
-import logging
 import sys
 from pathlib import Path
 
-LOGGER = logging.getLogger(__name__)
 
 DEFAULT_WIKI_DIR = Path.cwd() / "wiki"
 IMPORTANCE_ORDER = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
@@ -19,66 +17,45 @@ IMPORTANCE_ICONS = {
 }
 
 
-def configure_logging() -> None:
-    """Configure stderr logging for command-line execution."""
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Scan wiki/raw/ for unprocessed files")
-    parser.add_argument("--wiki-dir", default=str(DEFAULT_WIKI_DIR))
-    parser.add_argument("--keyword", default=None, help="Filter by keyword")
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown")
-    return parser.parse_args()
-
-
 def load_index(wiki_dir: Path) -> list[dict]:
-    """Load the raw index file when present."""
     index_path = wiki_dir / "raw" / "_index.json"
     if not index_path.exists():
         return []
     try:
-        loaded_index = json.loads(index_path.read_text(encoding="utf-8-sig"))
+        data = json.loads(index_path.read_text(encoding="utf-8-sig"))
     except Exception as exc:
-        LOGGER.error("Failed to read index: %s", exc)
+        print(f"Failed to read index: {exc}", file=sys.stderr)
         return []
-    return loaded_index.get("files", [])
+    return data.get("files", [])
 
 
-def load_meta_files(wiki_dir: Path) -> list[dict]:
-    """Load metadata sidecar files from wiki/raw/."""
-    raw_dir = wiki_dir / "raw"
-    if not raw_dir.exists():
-        return []
-
-    records: list[dict] = []
-    for meta_path in sorted(raw_dir.rglob("*.meta.json")):
-        try:
-            records.append(json.loads(meta_path.read_text(encoding="utf-8-sig")))
-        except Exception as exc:
-            LOGGER.warning("Failed to read meta file %s: %s", meta_path, exc)
-    return records
+def index_paths(wiki_dir: Path, records: list[dict]) -> set[Path]:
+    paths = set()
+    for record in records:
+        record_path = record.get("path")
+        if record_path:
+            paths.add((wiki_dir / record_path).resolve())
+    return paths
 
 
 def find_orphan_markdown(wiki_dir: Path) -> list[Path]:
-    """Find Markdown files in raw/ that do not have metadata sidecars."""
     raw_dir = wiki_dir / "raw"
     if not raw_dir.exists():
         return []
 
-    orphans: list[Path] = []
+    indexed_paths = index_paths(wiki_dir, load_index(wiki_dir))
+    orphans = []
     for md_path in sorted(raw_dir.rglob("*.md")):
-        relative_parts = md_path.relative_to(raw_dir).parts
-        if any(part in {"originals", "__pycache__"} for part in relative_parts[:-1]):
+        rel_parts = md_path.relative_to(raw_dir).parts
+        if any(part in {"originals", "__pycache__"} for part in rel_parts[:-1]):
             continue
-        if not md_path.with_suffix(".meta.json").exists():
-            orphans.append(md_path)
+        if md_path.resolve() in indexed_paths:
+            continue
+        orphans.append(md_path)
     return orphans
 
 
 def format_words(word_count: int) -> str:
-    """Format a word count for display."""
     if word_count == 0:
         return "snippet only"
     if word_count >= 1000:
@@ -87,7 +64,6 @@ def format_words(word_count: int) -> str:
 
 
 def select_unprocessed(files: list[dict], keyword: str | None) -> list[dict]:
-    """Return unprocessed files filtered by keyword when requested."""
     unprocessed = [record for record in files if not record.get("compiled", False)]
     if keyword:
         lowered_keyword = keyword.lower()
@@ -106,87 +82,66 @@ def select_unprocessed(files: list[dict], keyword: str | None) -> list[dict]:
 
 
 def write_json_output(unprocessed: list[dict]) -> None:
-    """Write JSON output to stdout."""
-    sys.stdout.write(json.dumps(unprocessed, ensure_ascii=False, indent=2))
-    sys.stdout.write("\n")
+    print(json.dumps(unprocessed, ensure_ascii=False, indent=2))
 
 
 def write_markdown_output(unprocessed: list[dict], wiki_dir: Path) -> None:
-    """Write Markdown output to stdout."""
-    output_lines = [
-        f"## Pending files ({len(unprocessed)})",
-        "",
-        f"> wiki dir: `{wiki_dir}`",
-        "",
-    ]
-    grouped_records: dict[str, list[dict]] = {}
+    print(f"## Pending files ({len(unprocessed)})\n")
+    print(f"> wiki dir: `{wiki_dir}`\n")
+
+    groups: dict[str, list[dict]] = {}
     for record in unprocessed:
-        grouped_records.setdefault(record.get("importance", "low"), []).append(record)
+        groups.setdefault(record.get("importance", "low"), []).append(record)
 
     for importance_key in ["urgent", "high", "medium", "low"]:
-        records = grouped_records.get(importance_key, [])
+        records = groups.get(importance_key, [])
         if not records:
             continue
-        output_lines.append(f"### {IMPORTANCE_ICONS[importance_key]} ({len(records)})")
-        output_lines.append("")
-        output_lines.extend(build_record_lines(records))
-
-    output_lines.append("---")
-    output_lines.append(
-        "*Run the `prism` skill following `wiki/WIKI.md` to organize these files into `wiki/pages/`.*"
-    )
-    sys.stdout.write("\n".join(output_lines))
-    sys.stdout.write("\n")
-
-
-def build_record_lines(records: list[dict]) -> list[str]:
-    """Build Markdown lines for a group of records."""
-    output_lines: list[str] = []
-    for record in records:
-        output_lines.append(f"- **{record.get('title', '(no title)')[:70]}**")
-        output_lines.append(
-            "  keyword: `{keyword}` | source: {source} | relevance: {relevance}"
-            " | {words} | {date}".format(
-                keyword=record.get("keyword", ""),
-                source=record.get("source", ""),
-                relevance=record.get("relevance", 0),
-                words=format_words(record.get("wordCount", 0)),
-                date=(record.get("fetchedAt") or "")[:10],
+        print(f"### {IMPORTANCE_ICONS[importance_key]} ({len(records)})\n")
+        for record in records:
+            title = record.get("title", "(no title)")[:70]
+            keyword = record.get("keyword", "")
+            source = record.get("source", "")
+            relevance = record.get("relevance", 0)
+            fetched_at = (record.get("fetchedAt") or "")[:10]
+            print(f"- **{title}**")
+            print(
+                f"  keyword: `{keyword}` | source: {source} | relevance: {relevance}"
+                f" | {format_words(record.get('wordCount', 0))} | {fetched_at}"
             )
-        )
-        output_lines.append(f"  path: `{record.get('path', '')}`")
-        record_url = record.get("url", "")
-        if record_url:
-            output_lines.append(f"  url: {record_url}")
-        output_lines.append("")
-    return output_lines
+            print(f"  path: `{record.get('path', '')}`")
+            if record.get("url"):
+                print(f"  url: {record['url']}")
+            print()
+
+    print("---")
+    print("*Run the `prism` skill following `wiki/WIKI.md` to organize these files into `wiki/pages/`.*")
 
 
 def main() -> int:
-    """Run the raw scan command."""
-    configure_logging()
-    args = parse_args()
+    parser = argparse.ArgumentParser(description="Scan wiki/raw/ for unprocessed files")
+    parser.add_argument("--wiki-dir", default=str(DEFAULT_WIKI_DIR))
+    parser.add_argument("--keyword", default=None, help="Filter by keyword")
+    parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown")
+    args = parser.parse_args()
+
     wiki_dir = Path(args.wiki_dir)
     orphans = find_orphan_markdown(wiki_dir)
     if orphans:
-        LOGGER.warning(
-            "warning: found %s orphan raw markdown file(s); run normalize_raw.py before scanning",
-            len(orphans),
+        print(
+            f"warning: found {len(orphans)} orphan raw markdown file(s); run normalize_raw.py before scanning",
+            file=sys.stderr,
         )
-    files = load_meta_files(wiki_dir) or load_index(wiki_dir)
-    unprocessed = select_unprocessed(files, args.keyword)
 
-    if not unprocessed:
-        if args.json:
-            write_json_output([])
-        else:
-            sys.stdout.write("No uncompiled files in wiki/raw/\n")
-        return 0
+    files = load_index(wiki_dir)
+    unprocessed = select_unprocessed(files, args.keyword)
 
     if args.json:
         write_json_output(unprocessed)
-    else:
+    elif unprocessed:
         write_markdown_output(unprocessed, wiki_dir)
+    else:
+        print("No uncompiled files in wiki/raw/")
     return 0
 
 

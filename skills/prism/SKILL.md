@@ -94,13 +94,19 @@ Append to `[topic]/wiki/log.md`:
 **You MUST now read and execute the constitution. Do not ask the user for permission.**
 
 1. Read `[topic]/wiki/WIKI.md` in full
-2. Run the scan to find all uncompiled documents:
+2. Normalize manually uploaded raw files so bare Markdown or local documents become standard raw records:
+
+```bash
+python $SKILL_DIR/scripts/normalize_raw.py --wiki-dir [topic]/wiki/ --keyword [topic]
+```
+
+3. Run the scan to find all uncompiled documents:
 
 ```bash
 python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 ```
 
-3. **If there are uncompiled documents** → immediately proceed with the **Compile** operation as defined in WIKI.md:
+4. **If there are uncompiled documents** → immediately proceed with the **Compile** operation as defined in WIKI.md:
     - **Batch Intelligence (Pre-review)**: Do not process one by one immediately. First, read the summaries/frontmatter of ALL uncompiled documents to build a global context of the new information landscape.
     - Read each uncompiled raw file.
     - **Perform Proactive Extraction**: Do not just summarize. Identify all mentioned entities and concepts.
@@ -120,15 +126,15 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
      ```
      If `$ROUTER_SKILL_DIR/scripts/discover.py` does not exist, skip silently.
 
-4. **If raw/ is empty or all compiled** → the WIKI.md constitution handles Query mode directly. No action needed from this skill.
+5. **If raw/ is empty or all compiled** → the WIKI.md constitution handles Query mode directly. No action needed from this skill.
 
-5. **If user asked for a health check, 巡检, quality check, freshness check, or usability check**:
+6. **If user asked for a health check, 巡检, quality check, freshness check, or usability check**:
    - Do not stop at file counts or existence checks.
    - Run the **Health Check** operation defined in WIKI.md.
    - Evaluate whether the wiki is still navigable, understandable, trustworthy, and maintainable.
    - Report overall status first, then list issues by severity with repair suggestions.
 
-6. **If user asked to maintain, self-update, absorb new material, incrementally compile, or preserve a
+7. **If user asked to maintain, self-update, absorb new material, incrementally compile, or preserve a
    high-value conversation**:
    - Run the **Maintenance / Self-update** operation defined in WIKI.md.
    - Treat raw files, recent internal documents, and user-approved conversation insights as possible increments.
@@ -141,6 +147,6 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 | Script | Purpose | Key Options |
 |--------|---------|-------------|
 | `save_to_raw.py` | Ingest enriched JSON into `wiki/raw/` and `wiki/signals/` | `--in`, `--wiki-dir`, `--keyword` |
+| `normalize_raw.py` | Register manually uploaded raw Markdown/local documents as uncompiled raw records | `--wiki-dir`, `--keyword` |
 | `scan_raw.py` | List uncompiled files from `wiki/raw/_index.json` | `--wiki-dir`, `--keyword`, `--json` |
 | `update_index.py` | Rebuild `wiki/index.md` from page files | `--wiki-dir`, `--kb-id` |
-

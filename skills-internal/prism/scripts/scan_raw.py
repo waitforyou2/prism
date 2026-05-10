@@ -61,6 +61,22 @@ def load_meta_files(wiki_dir: Path) -> list[dict]:
     return records
 
 
+def find_orphan_markdown(wiki_dir: Path) -> list[Path]:
+    """Find Markdown files in raw/ that do not have metadata sidecars."""
+    raw_dir = wiki_dir / "raw"
+    if not raw_dir.exists():
+        return []
+
+    orphans: list[Path] = []
+    for md_path in sorted(raw_dir.rglob("*.md")):
+        relative_parts = md_path.relative_to(raw_dir).parts
+        if any(part in {"originals", "__pycache__"} for part in relative_parts[:-1]):
+            continue
+        if not md_path.with_suffix(".meta.json").exists():
+            orphans.append(md_path)
+    return orphans
+
+
 def format_words(word_count: int) -> str:
     """Format a word count for display."""
     if word_count == 0:
@@ -151,6 +167,12 @@ def main() -> int:
     configure_logging()
     args = parse_args()
     wiki_dir = Path(args.wiki_dir)
+    orphans = find_orphan_markdown(wiki_dir)
+    if orphans:
+        LOGGER.warning(
+            "warning: found %s orphan raw markdown file(s); run normalize_raw.py before scanning",
+            len(orphans),
+        )
     files = load_meta_files(wiki_dir) or load_index(wiki_dir)
     unprocessed = select_unprocessed(files, args.keyword)
 

@@ -56,6 +56,21 @@ def load_meta_files(wiki_dir: Path) -> list:
     return records
 
 
+def find_orphan_markdown(wiki_dir: Path) -> list[Path]:
+    raw_dir = wiki_dir / "raw"
+    if not raw_dir.exists():
+        return []
+
+    orphans = []
+    for md_path in sorted(raw_dir.rglob("*.md")):
+        if any(part in {"originals", "__pycache__"} for part in md_path.relative_to(raw_dir).parts[:-1]):
+            continue
+        meta_path = md_path.with_suffix(".meta.json")
+        if not meta_path.exists():
+            orphans.append(md_path)
+    return orphans
+
+
 def format_words(n: int) -> str:
     if n == 0:
         return "snippet only"
@@ -72,6 +87,13 @@ def main():
     args = parser.parse_args()
 
     wiki_dir = Path(args.wiki_dir)
+    orphans = find_orphan_markdown(wiki_dir)
+    if orphans:
+        print(
+            f"warning: found {len(orphans)} orphan raw markdown file(s); run normalize_raw.py before scanning",
+            file=sys.stderr,
+        )
+
     files = load_meta_files(wiki_dir)
     if not files:
         files = load_index(wiki_dir)

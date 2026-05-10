@@ -107,19 +107,32 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 ```
 
 4. **If there are uncompiled documents** → immediately proceed with the **Compile** operation as defined in WIKI.md:
+    - **Create Raw Coverage Plan first**:
+      ```bash
+      python $SKILL_DIR/scripts/compile_plan.py --wiki-dir [topic]/wiki/ --keyword [topic]
+      ```
+      This writes `[topic]/wiki/compile_plan.md`. Use it as the working checklist for this compile run.
     - **Batch Intelligence (Pre-review)**: Do not process one by one immediately. First, read the summaries/frontmatter of ALL uncompiled documents to build a global context of the new information landscape.
+    - Read `[topic]/wiki/compile_plan.md` before editing pages.
     - Read each uncompiled raw file.
     - **Perform Proactive Extraction**: Do not just summarize. Identify all mentioned entities and concepts.
+    - **Maintain the Extraction Table**: While compiling, fill the `Extraction Table` in `compile_plan.md` with every reusable entity, concept, claim, judgment, data point, and target page.
     - **Update/Enrich Mode**: If a page for a concept/entity already exists, **DRASTICALLY ENRICH** it with new details and citations rather than just creating small stubs.
     - **Multi-perspective Overviews**: Create/update pages in `[topic]/wiki/pages/overview/`, `[topic]/wiki/pages/concepts/`, and `[topic]/wiki/pages/entities/`. If the topic has broad knowledge breadth, generate multiple overviews for different perspectives (e.g., technical, community, user-guide).
+    - **Overview Coverage Gate**: Every `urgent` / `high` raw record and every raw record with relevance >= 80 must be reflected in at least one overview page.
     - **Internal Citations Only**: Use `[[raw/YYYYMMDD/filename.md]]` format. Never use external URLs for sources.
-   - Mark each matching record in `raw/_index.json` as `"compiled": true`
+   - Mark each matching record in `raw/_index.json` as `"compiled": true` only after it has at least one target page and one local raw citation.
    - Append entries to `[topic]/wiki/log.md`
    - After all done, run:
      ```bash
      python $SKILL_DIR/scripts/update_index.py --wiki-dir [topic]/wiki/ --kb-id [topic]
      ```
    - Update `[topic]/wiki/index.md`
+   - Run the compile audit:
+     ```bash
+     python $SKILL_DIR/scripts/compile_audit.py --wiki-dir [topic]/wiki/
+     ```
+     If the audit reports `FAIL`, repair missing citations or overview coverage before reporting completion.
    - **Auto-register** (only if router skill is installed): infer `$ROUTER_SKILL_DIR` as a sibling of this skill's parent `skills/` directory, then run:
      ```bash
      python $ROUTER_SKILL_DIR/scripts/discover.py --workspace . --out .prism/registry.json
@@ -149,4 +162,6 @@ python $SKILL_DIR/scripts/scan_raw.py --wiki-dir [topic]/wiki/
 | `save_to_raw.py` | Ingest enriched JSON into `wiki/raw/` and `wiki/signals/` | `--in`, `--wiki-dir`, `--keyword` |
 | `normalize_raw.py` | Register manually uploaded raw Markdown/local documents as uncompiled raw records | `--wiki-dir`, `--keyword` |
 | `scan_raw.py` | List uncompiled files from `wiki/raw/_index.json` | `--wiki-dir`, `--keyword`, `--json` |
+| `compile_plan.py` | Create `wiki/compile_plan.md` raw coverage checklist and extraction table | `--wiki-dir`, `--keyword`, `--out` |
+| `compile_audit.py` | Check compiled raw citations, high-value overview coverage, and uncited pages | `--wiki-dir`, `--json` |
 | `update_index.py` | Rebuild `wiki/index.md` from page files | `--wiki-dir`, `--kb-id` |

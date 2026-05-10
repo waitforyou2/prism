@@ -60,6 +60,13 @@ wiki/
 
 扫描 `raw/` 下所有 `.meta.json` 文件，找到 `"compiled": false` 的文档。
 
+在正式写入 `pages/` 之前，必须先生成并维护 `compile_plan.md`：
+
+1. 运行 `compile_plan.py` 生成 Raw Coverage Checklist 和 Extraction Table。
+2. 先读完整个 checklist，理解这批 raw 的全局信息景观。
+3. 编译过程中持续填写 Extraction Table。不要只在脑中完成抽取。
+4. 每个 raw 只有在其有效信息已进入至少一个目标页面，且页面中出现本地 raw 引用后，才能勾选并标记为 `compiled: true`。
+
 **对每个尚未编译的文档，你必须执行以下深度提取流程：**
 
 1. **阅读全文**：理解文档的核心论点、提到的每一个具体工具(Entity)和技术名词(Concept)。
@@ -72,7 +79,9 @@ wiki/
    - 在新创建的内容中，使用 `[[Page Title]]` 将相关的实体与概念互相链接。
    - **充分利用 Data Pool**：不仅引用核心文档，还应主动搜索 `raw/` 中其他提及该知识点的文档。
    - **必须**在"关键来源"章节引用文档对应的本地 raw 路径，格式为 `[[raw/YYYYMMDD/filename.md]]`。
-5. **更新进度**：更新 `.meta.json` 中的 `compiled: true` 并记录日志。
+5. **Overview 覆盖门槛**：所有 `urgent` / `high` 文档，以及 relevance >= 80 的文档，必须被至少一个 `pages/overview/` 页面吸收。Overview 不是目录简介，而是高权重资料的综合入口。
+6. **编译后审计**：运行 `compile_audit.py`。如果出现 compiled raw 未被任何页面引用，或高权重 raw 未进入 overview，必须先修复，不要向用户声称编译完成。
+7. **更新进度**：只有通过上述覆盖要求后，才更新 `.meta.json` / `raw/_index.json` 中的 `compiled: true` 并记录日志。
 
 ### 2. Query（检索回答）
 
@@ -308,5 +317,6 @@ updated: YYYYMMDD
 1. **禁止外部链接**：在“关键来源”章节，**严禁引用 http/https URL**。必须引用本地路径 `[[raw/YYYYMMDD/source_file.md]]`。
 2. **充分收割 (Crystallization)**：如果 raw 文档提到了一个新的工具或观点，即使不是当前文档的主角，也应在对应页面追加信息，确保 raw 文档的价值被榨干。
 3. **高密度多维概览**：Overview 页面不应只是简介，应作为该库的“最强综述”。当知识面很广时，应拆分为不同视角的多个 Overview（如 `openclaw_architecture` vs `openclaw_user_feedback`）。
-4. **日期格式**：所有 frontmatter 和路径中的日期统一使用 `YYYYMMDD` 格式。
-5. **双向链接**：创建页面时必须考虑“它属于谁”和“谁属于它”，通过双链构建网络。
+4. **覆盖先于完成**：`compiled: true` 是质量承诺，不是流程标记。未进入目标页面、未被本地 raw 引用、未纳入 overview 的高权重资料，都不能算完成。
+5. **日期格式**：所有 frontmatter 和路径中的日期统一使用 `YYYYMMDD` 格式。
+6. **双向链接**：创建页面时必须考虑“它属于谁”和“谁属于它”，通过双链构建网络。
